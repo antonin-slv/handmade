@@ -176,8 +176,12 @@ LRESULT mainWindowCallback(
 
   case WM_MOUSEMOVE:
   {
+    MouseState.last_x = MouseState.x;
+    MouseState.last_y = MouseState.y;
+
     MouseState.x = GET_X_LPARAM(lParam);
     MouseState.y = GET_Y_LPARAM(lParam);
+
   }
   break;
 
@@ -288,7 +292,7 @@ int WINAPI WinMain(
         {
           xOffset += 1;
         }
-        else if (
+        if (
             KeyboardState.is_key_down(KeyboardState.key_up))
         {
           yOffset -= 1;
@@ -303,12 +307,23 @@ int WINAPI WinMain(
         else if (KeyboardState.is_key_down(VK_DOWN))
           yOffset += 5;
 
+        if (MouseState.is_left_down())
+        {
+          xOffset -= (MouseState.x - MouseState.last_x);
+          yOffset -= (MouseState.y - MouseState.last_y);
+        }
+
         RenderGradient(&globalBackBuffer, xOffset, yOffset);
 
         Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
         Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
         ReleaseDC(window, DeviceContext);
+
+
+        //clears mouse movement delta
+        MouseState.last_x = MouseState.x;
+        MouseState.last_y = MouseState.y;
       }
     }
     else
