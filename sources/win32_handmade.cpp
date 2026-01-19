@@ -1,8 +1,14 @@
 #include <Windows.h>
 #include <Windowsx.h>
-#include <stdint.h>
-#include <Xinput.h>
+
 #include <string>
+#include <stdint.h>
+
+#include <Xinput.h>
+#include <audioclient.h>
+#include <Audiopolicy.h>
+
+#include "win32_audio_engine.cpp"
 #include "win32_controller.cpp"
 #include "win32_keyboard.h"
 
@@ -161,16 +167,17 @@ LRESULT mainWindowCallback(
   {
     uint32_t VKCode = wParam;
 
-    if (VKCode == VK_ESCAPE)
-    {
-      running = false;
-    }
-
     WORD keyFlags = HIWORD(lParam);
     bool isKeyReleased = (keyFlags & KF_UP) != KF_UP;
     KeyboardState.set_key_state((int)VKCode, isKeyReleased);
 
     bool wasDown = (keyFlags & KF_REPEAT) != KF_REPEAT;
+    bool altKeyWasDown = (lParam & (1 << 29)) != 0;
+
+    if (altKeyWasDown && VKCode == VK_F4)
+    {
+      running = false;
+    }
   }
   break;
 
@@ -181,7 +188,6 @@ LRESULT mainWindowCallback(
 
     MouseState.x = GET_X_LPARAM(lParam);
     MouseState.y = GET_Y_LPARAM(lParam);
-
   }
   break;
 
@@ -224,117 +230,156 @@ int WINAPI WinMain(
   LPCWSTR lpszMenuName;
   windowClass.lpszClassName = "HandmadeWindowClass";
 
-  if (RegisterClass(&windowClass))
-  {
-    HWND window = CreateWindowEx(
-        0,
-        windowClass.lpszClassName,
-        "Handmade",
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        nullptr,
-        nullptr,
-        Instance,
-        nullptr);
-
-    if (window)
-    {
-      int xOffset = 0;
-      int yOffset = 0;
-      running = true;
-      while (running)
-      {
-        MSG message;
-        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
-        {
-          if (message.message == WM_QUIT)
-          {
-            running = false;
-          }
-          TranslateMessage(&message);
-          DispatchMessage(&message);
-        }
-
-        for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex)
-        {
-          XINPUT_STATE controllerState;
-          ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
-
-          if (XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
-          {
-            // Controller is connected
-            Win32ControllerInput pad(controllerState.Gamepad);
-          }
-          else
-          {
-            // Controller is not connected
-            // TODO :  this case will have to be handled in the future
-          }
-        }
-
-        HDC DeviceContext = GetDC(window);
-        RECT clientRect;
-        GetClientRect(window, &clientRect);
-        if (KeyboardState.is_key_down(VK_LEFT))
-          xOffset -= 5;
-        else if (KeyboardState.is_key_down(VK_RIGHT))
-          xOffset += 5;
-        else if (
-            KeyboardState.is_key_down(KeyboardState.key_left))
-        {
-          xOffset -= 1;
-        }
-        else if (
-            KeyboardState.is_key_down(KeyboardState.key_right))
-        {
-          xOffset += 1;
-        }
-        if (
-            KeyboardState.is_key_down(KeyboardState.key_up))
-        {
-          yOffset -= 1;
-        }
-        else if (
-            KeyboardState.is_key_down(KeyboardState.key_down))
-        {
-          yOffset += 1;
-        }
-        else if (KeyboardState.is_key_down(VK_UP))
-          yOffset -= 5;
-        else if (KeyboardState.is_key_down(VK_DOWN))
-          yOffset += 5;
-
-        if (MouseState.is_left_down())
-        {
-          xOffset -= (MouseState.x - MouseState.last_x);
-          yOffset -= (MouseState.y - MouseState.last_y);
-        }
-
-        RenderGradient(&globalBackBuffer, xOffset, yOffset);
-
-        Win32WindowDimension Dimension = Win32GetWindowDimension(window);
-
-        Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
-        ReleaseDC(window, DeviceContext);
-
-
-        //clears mouse movement delta
-        MouseState.last_x = MouseState.x;
-        MouseState.last_y = MouseState.y;
-      }
-    }
-    else
-    {
-      OutputDebugStringA("Failed to create window.\n");
-    }
-  }
-  else
+  if (!RegisterClass(&windowClass))
   {
     OutputDebugStringA("Failed to register window class.\n");
+    return -1; // ----------------------------------------------------- RETURN
   }
+
+  HWND window = CreateWindowEx(
+      0,
+      windowClass.lpszClassName,
+      "Handmade",
+      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+      CW_USEDEFAULT,
+      CW_USEDEFAULT,
+      CW_USEDEFAULT,
+      CW_USEDEFAULT,
+      nullptr,
+      nullptr,
+      Instance,
+      nullptr);
+
+  if (!window)
+  {
+    OutputDebugStringA("Failed to create window.\n");
+    return -1; // ----------------------------------------------------- RETURN
+  }
+
+  // audio initialization
+  bool hasAudio = false;
+  IAudioRenderClient *pRenderAudioClient;
+  WAVEFORMATEX *pwfx;
+
+  DWORD audioFlags = 0;
+  int wavetime = 0;
+
+  HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (SUCCEEDED(hr))
+  {
+    hr = win32_GetRenderClient(&pRenderAudioClient, &pwfx);
+    if (SUCCEEDED(hr))
+    {
+      hasAudio = true;
+    }
+
+    //
+
+    fillAudioBuffer(*pAudioClient, pRenderAudioClient,
+                    pwfx, audioFlags, wavetime);
+
+    hr = pAudioClient->Start();
+  }
+
+  // actual loop
+  int xOffset = 0;
+  int yOffset = 0;
+  running = true;
+  while (running)
+  {
+    MSG message;
+    while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
+    {
+      if (message.message == WM_QUIT)
+      {
+        running = false;
+      }
+      TranslateMessage(&message);
+      DispatchMessage(&message);
+    }
+
+    for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex)
+    {
+      XINPUT_STATE controllerState;
+      ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
+
+      if (XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
+      {
+        // Controller is connected
+        Win32ControllerInput pad(controllerState.Gamepad);
+      }
+      else
+      {
+        // Controller is not connected
+        // TODO :  this case will have to be handled in the future
+      }
+    }
+
+    HDC DeviceContext = GetDC(window);
+    RECT clientRect;
+    GetClientRect(window, &clientRect);
+    if (KeyboardState.is_key_down(VK_LEFT))
+      xOffset -= 5;
+    else if (KeyboardState.is_key_down(VK_RIGHT))
+      xOffset += 5;
+    else if (
+        KeyboardState.is_key_down(KeyboardState.key_left))
+    {
+      xOffset -= 1;
+    }
+    else if (
+        KeyboardState.is_key_down(KeyboardState.key_right))
+    {
+      xOffset += 1;
+    }
+    if (
+        KeyboardState.is_key_down(KeyboardState.key_up))
+    {
+      yOffset -= 1;
+    }
+    else if (
+        KeyboardState.is_key_down(KeyboardState.key_down))
+    {
+      yOffset += 1;
+    }
+    else if (KeyboardState.is_key_down(VK_UP))
+      yOffset -= 5;
+    else if (KeyboardState.is_key_down(VK_DOWN))
+      yOffset += 5;
+
+    if (MouseState.is_left_down())
+    {
+      xOffset -= (MouseState.x - MouseState.last_x);
+      yOffset -= (MouseState.y - MouseState.last_y);
+    }
+
+    RenderGradient(&globalBackBuffer, xOffset, yOffset);
+
+    Win32WindowDimension Dimension = Win32GetWindowDimension(window);
+
+    Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
+    ReleaseDC(window, DeviceContext);
+    // continue audio streaming
+    if (hasAudio)
+    {
+
+      fillAudioBuffer(*pAudioClient, pRenderAudioClient,
+                      pwfx, audioFlags, wavetime);
+    }
+
+    // clears mouse movement delta
+    MouseState.last_x = MouseState.x;
+    MouseState.last_y = MouseState.y;
+  }
+
+  // free audio resources (probably not necessary since the program is ending)
+  if (hasAudio)
+  {
+    pAudioClient->Stop();
+    pRenderAudioClient->Release();
+    win32_releaseALLAudioClient();
+  }
+  CoUninitialize();
 
   return 0;
 }
