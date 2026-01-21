@@ -11,16 +11,7 @@
 #include "win32_audio_engine.cpp"
 #include "win32_controller.cpp"
 #include "win32_keyboard.h"
-
-struct Win32OffscreenBuffer
-{
-  BITMAPINFO Info;
-  void *Memory;
-  int Width;
-  int Height;
-  int Pitch;
-  int BytesPerPixel;
-};
+#include "win32_renderVisual.cpp"
 
 struct Win32WindowDimension
 {
@@ -35,6 +26,7 @@ static bool running;
 // TODO : Temporary static
 static keyboard_state KeyboardState;
 static mouse_state MouseState;
+static float zoom_level = 1.0f;
 
 static Win32WindowDimension Win32GetWindowDimension(HWND Window)
 {
@@ -46,67 +38,6 @@ static Win32WindowDimension Win32GetWindowDimension(HWND Window)
   result.Height = clientRect.bottom - clientRect.top;
 
   return result;
-}
-static void RenderGradient(Win32OffscreenBuffer *Buffer, int XOffset, int YOffset)
-{
-  uint8_t *row = (uint8_t *)Buffer->Memory;
-  for (int Y = 0; Y < Buffer->Height; ++Y)
-  {
-    uint32_t *pixel = (uint32_t *)row;
-    for (int X = 0; X < Buffer->Width; ++X)
-    {
-      uint8_t blue = (X + XOffset) % 256;
-      uint8_t green = (Y + YOffset) % 256;
-      uint8_t red = 0;
-
-      *pixel++ = ((red << 16) | (green << 8) | blue);
-    }
-    row += Buffer->Pitch;
-  }
-}
-
-static void ResizeDIBSection(Win32OffscreenBuffer *Buffer, int Width, int Height)
-{
-  static bool firstTime;
-
-  if (Buffer->Memory)
-  {
-    VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
-  }
-
-  Buffer->Width = Width;
-  Buffer->Height = Height;
-  Buffer->BytesPerPixel = 4;
-
-  Buffer->Info.bmiHeader.biSize = sizeof(Buffer->Info.bmiHeader);
-  Buffer->Info.bmiHeader.biWidth = Buffer->Width;
-  Buffer->Info.bmiHeader.biHeight = -Buffer->Height;
-  Buffer->Info.bmiHeader.biPlanes = 1;
-  Buffer->Info.bmiHeader.biBitCount = 32;
-  Buffer->Info.bmiHeader.biCompression = BI_RGB;
-  Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
-
-  int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
-  Buffer->Memory = VirtualAlloc(
-      nullptr,
-      bitMapMemorySize,
-      MEM_RESERVE | MEM_COMMIT,
-      PAGE_READWRITE);
-}
-
-static void Win32CopyBufferToWindow(
-    HDC WindowContext, int WindowWidth, int WindowHeight,
-    Win32OffscreenBuffer *Buffer,
-    int X, int Y, int Width, int Height)
-{
-
-  StretchDIBits(
-      WindowContext,
-      0, 0, WindowWidth, WindowHeight,
-      0, 0, Buffer->Width, Buffer->Height,
-      Buffer->Memory,
-      &Buffer->Info,
-      DIB_RGB_COLORS, SRCCOPY);
 }
 
 LRESULT mainWindowCallback(
@@ -190,6 +121,10 @@ LRESULT mainWindowCallback(
     MouseState.y = GET_Y_LPARAM(lParam);
   }
   break;
+  case WM_MOUSEWHEEL:
+  {
+    MouseState.wheel_delta = GET_WHEEL_DELTA_WPARAM(wParam);
+  }
 
   case WM_LBUTTONDOWN:
   case WM_LBUTTONUP:
@@ -220,9 +155,6 @@ int WINAPI WinMain(
     int nShowCmd)
 {
   WNDCLASS windowClass = {};
-
-  ResizeDIBSection(&globalBackBuffer, 1280, 720);
-
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = mainWindowCallback;
   windowClass.hInstance = Instance;
@@ -241,10 +173,8 @@ int WINAPI WinMain(
       windowClass.lpszClassName,
       "Handmade",
       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
+      CW_USEDEFAULT, CW_USEDEFAULT,
+      CW_USEDEFAULT, CW_USEDEFAULT,
       nullptr,
       nullptr,
       Instance,
@@ -254,6 +184,25 @@ int WINAPI WinMain(
   {
     OutputDebugStringA("Failed to create window.\n");
     return -1; // ----------------------------------------------------- RETURN
+  }
+  // image buffer initialization
+  Win32WindowDimension windowDim = Win32GetWindowDimension(window);
+  // made here to match the initial window size to avoid stretching
+  //  TODO : should be initialized earlier with better stretching algorithm)
+  ResizeDIBSection(&globalBackBuffer, windowDim.Width, windowDim.Height);
+
+  int array_width = 2000;
+  int array_height = 2000;
+  int *test_array = (int *)malloc(array_width * array_height * sizeof(int));
+  for (int y = 0; y < array_height; y++)
+  {
+    for (int x = 0; x < array_width; x++)
+    {
+      uint8_t red = x * 5 % 256;
+      uint8_t green = y * 5 % 256;
+      uint8_t blue = 0;
+      test_array[y * array_width + x] = (red << 16) | (green << 8) | blue;
+    }
   }
 
   // audio initialization
@@ -272,21 +221,30 @@ int WINAPI WinMain(
     {
       hasAudio = true;
     }
-
-    //
-
     fillAudioBuffer(*pAudioClient, pRenderAudioClient,
                     pwfx, audioFlags, wavetime);
 
     hr = pAudioClient->Start();
   }
 
+  
+  LARGE_INTEGER Frequency;
+  QueryPerformanceFrequency(&Frequency);
+  int64_t PerfCountFrequency = Frequency.QuadPart;
+  LARGE_INTEGER LastCounter;
+  LARGE_INTEGER StartCounter;
+  QueryPerformanceCounter(&LastCounter);
   // actual loop
   int xOffset = 0;
   int yOffset = 0;
   running = true;
+
   while (running)
   {
+    float deltaT;
+    QueryPerformanceCounter(&StartCounter);
+    deltaT = (float)(StartCounter.QuadPart - LastCounter.QuadPart) / (float)PerfCountFrequency;
+    LastCounter = StartCounter;
     MSG message;
     while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
     {
@@ -316,45 +274,34 @@ int WINAPI WinMain(
     }
 
     HDC DeviceContext = GetDC(window);
-    RECT clientRect;
-    GetClientRect(window, &clientRect);
-    if (KeyboardState.is_key_down(VK_LEFT))
-      xOffset -= 5;
-    else if (KeyboardState.is_key_down(VK_RIGHT))
-      xOffset += 5;
-    else if (
-        KeyboardState.is_key_down(KeyboardState.key_left))
-    {
-      xOffset -= 1;
-    }
-    else if (
-        KeyboardState.is_key_down(KeyboardState.key_right))
-    {
-      xOffset += 1;
-    }
-    if (
-        KeyboardState.is_key_down(KeyboardState.key_up))
-    {
-      yOffset -= 1;
-    }
-    else if (
-        KeyboardState.is_key_down(KeyboardState.key_down))
-    {
-      yOffset += 1;
-    }
-    else if (KeyboardState.is_key_down(VK_UP))
-      yOffset -= 5;
-    else if (KeyboardState.is_key_down(VK_DOWN))
-      yOffset += 5;
 
     if (MouseState.is_left_down())
     {
       xOffset -= (MouseState.x - MouseState.last_x);
       yOffset -= (MouseState.y - MouseState.last_y);
     }
+    if (MouseState.wheel_delta != 0)
+    {
+      float prev_zoom = zoom_level;
+      zoom_level *= (1.0f + (float)MouseState.wheel_delta / 4000.0f);
 
-    RenderGradient(&globalBackBuffer, xOffset, yOffset);
+      // pour centrer le zoom : combien de pixels sont ajoutés / retirés ?
+      //  si zoom_level augmente, on crop dans l'image, donc on enlève des pixels
+      float pixel_change_x = (zoom_level / prev_zoom) * (globalBackBuffer.Width / 2 + xOffset) - (globalBackBuffer.Width / 2);
+      float pixel_change_y = (zoom_level / prev_zoom) * (globalBackBuffer.Height / 2 + yOffset) - (globalBackBuffer.Height / 2);
 
+      xOffset = (int)pixel_change_x;
+      yOffset = (int)pixel_change_y;
+    }
+    // RenderGradient(&globalBackBuffer, xOffset, yOffset);
+    // renderCheckerboard(&globalBackBuffer, 4, xOffset, yOffset, 0, 0);
+    renderArrayPattern(&globalBackBuffer, test_array, array_width, array_height, 1.0f, xOffset, yOffset, zoom_level);
+
+    float fps = 1.0f / deltaT;
+    char fps_buffer[256];
+    sprintf_s(fps_buffer, "FPS: %f", fps);
+    renderString(&globalBackBuffer, fps_buffer, 10, 10);
+    
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
     Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
@@ -370,6 +317,7 @@ int WINAPI WinMain(
     // clears mouse movement delta
     MouseState.last_x = MouseState.x;
     MouseState.last_y = MouseState.y;
+    MouseState.wheel_delta = 0;
   }
 
   // free audio resources (probably not necessary since the program is ending)

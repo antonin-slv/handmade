@@ -33,6 +33,8 @@ struct mouse_state
     int last_x = 0;
     int last_y = 0;
 
+    int wheel_delta = 0;
+
     uint32_t state = 0; // bitfield for buttons
 
     bool is_button_down(uint32_t button_mask) const { return (state & button_mask) != 0; }
@@ -48,4 +50,5 @@ struct mouse_state
     bool is_x2_down() const { return is_button_down(MK_XBUTTON2); }
 
     void set_mouse(uint32_t button_mask) { state = button_mask; }
+
 };
