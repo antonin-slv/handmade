@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdint.h>
+
 #include "font8x8_basic.h"
 /**
  * what I need to print stuff on the screen
@@ -16,66 +17,65 @@ struct Win32OffscreenBuffer
     int BytesPerPixel;
 };
 
-
 void renderCharacter(Win32OffscreenBuffer *buffer, char character, int x, int y)
-{ 
-  uint8_t *row = (uint8_t *)buffer->Memory + y * buffer->Pitch + x * 4;
-  for (int glyph_y = 0; glyph_y < 8; ++glyph_y)
-  {
-    uint8_t glyph_row = font8x8_basic[(uint8_t)character][glyph_y];
-    uint32_t *pixel = (uint32_t *)row;
-    for (int glyph_x = 0; glyph_x < 8; ++glyph_x)
+{
+    uint8_t *row = (uint8_t *)buffer->Memory + y * buffer->Pitch + x * 4;
+    for (int glyph_y = 0; glyph_y < 8; ++glyph_y)
     {
-      uint8_t mask = 1 << glyph_x;
-      if (glyph_row & mask)
-      {
-        *pixel++ = (uint32_t)(0x00FFFFFF); // White
-      }
-      else
-      {
-        *pixel++ = (uint32_t)(0x00000000); // Black
-      }
+        uint8_t glyph_row = font8x8_basic[(uint8_t)character][glyph_y];
+        uint32_t *pixel = (uint32_t *)row;
+        for (int glyph_x = 0; glyph_x < 8; ++glyph_x)
+        {
+            uint8_t mask = 1 << glyph_x;
+            if (glyph_row & mask)
+            {
+                *pixel++ = (uint32_t)(0x00FFFFFF); // White
+            }
+            else
+            {
+                *pixel++ = (uint32_t)(0x00000000); // Black
+            }
+        }
+        row += buffer->Pitch;
     }
-    row += buffer->Pitch;
-  }
 }
 
 void renderString(Win32OffscreenBuffer *buffer, const std::string &str, int x, int y)
 {
-  int cursor_x = x;
-  for (char c : str)
-  {
-    renderCharacter(buffer, c, cursor_x, y);
-    cursor_x += 8; // Advance cursor by character width
-  }
+    int cursor_x = x;
+    for (char c : str)
+    {
+        renderCharacter(buffer, c, cursor_x, y);
+        cursor_x += 8; // Advance cursor by character width
+    }
 }
 
 static void ResizeDIBSection(Win32OffscreenBuffer *Buffer, int Width, int Height)
 {
 
-  if (Buffer->Memory)
-  {
-    VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
-  }
+    if (Buffer->Memory)
+    {
+        VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
+    }
 
-  Buffer->Width = Width;
-  Buffer->Height = Height;
-  Buffer->BytesPerPixel = 4;
+    Buffer->Width = Width;
+    Buffer->Height = Height;
+    Buffer->BytesPerPixel = 4;
 
-  Buffer->Info.bmiHeader.biSize = sizeof(Buffer->Info.bmiHeader);
-  Buffer->Info.bmiHeader.biWidth = Buffer->Width;
-  Buffer->Info.bmiHeader.biHeight = -Buffer->Height;
-  Buffer->Info.bmiHeader.biPlanes = 1;
-  Buffer->Info.bmiHeader.biBitCount = 32;
-  Buffer->Info.bmiHeader.biCompression = BI_RGB;
-  Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
+    Buffer->Info.bmiHeader.biSize = sizeof(Buffer->Info.bmiHeader);
+    Buffer->Info.bmiHeader.biWidth = Buffer->Width;
+    Buffer->Info.bmiHeader.biHeight = -Buffer->Height;
+    Buffer->Info.bmiHeader.biPlanes = 1;
+    Buffer->Info.bmiHeader.biBitCount = 32;
+    Buffer->Info.bmiHeader.biCompression = BI_RGB;
+    Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
 
-  int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
-  Buffer->Memory = VirtualAlloc(
-      nullptr,
-      bitMapMemorySize,
-      MEM_RESERVE | MEM_COMMIT,
-      PAGE_READWRITE);
+    int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
+    Buffer->Memory = VirtualAlloc(
+        nullptr,
+        bitMapMemorySize,
+        MEM_RESERVE | MEM_COMMIT,
+        PAGE_READWRITE);
 }
 
 static void Win32CopyBufferToWindow(
@@ -84,13 +84,13 @@ static void Win32CopyBufferToWindow(
     int X, int Y, int Width, int Height)
 {
 
-  StretchDIBits(
-      WindowContext,
-      0, 0, WindowWidth, WindowHeight,
-      0, 0, Buffer->Width, Buffer->Height,
-      Buffer->Memory,
-      &Buffer->Info,
-      DIB_RGB_COLORS, SRCCOPY);
+    StretchDIBits(
+        WindowContext,
+        0, 0, WindowWidth, WindowHeight,
+        0, 0, Buffer->Width, Buffer->Height,
+        Buffer->Memory,
+        &Buffer->Info,
+        DIB_RGB_COLORS, SRCCOPY);
 }
 
 void RenderGradient(Win32OffscreenBuffer *Buffer, int XOffset, int YOffset)
@@ -213,7 +213,7 @@ void renderArrayPattern(Win32OffscreenBuffer *Buffer,
             if (array_index_x >= array_width || array_index_x < 0 || array_index_y >= array_height || array_index_y < 0)
             {
                 // out of bounds
-                *pixel++ = 0x00000000; // Black
+                *pixel++ = 0x000F0F0F; // very mid gray
             }
             else
             {

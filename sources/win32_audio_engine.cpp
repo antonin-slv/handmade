@@ -9,8 +9,7 @@
 #define REFTIMES_PER_SEC 10000000
 #define REFTIMES_PER_MILLISEC 10000
 
-
-static IAudioClient* pAudioClient;
+static IAudioClient *pAudioClient;
 static UINT32 bufferFrameCount;
 
 #define SAFE_RELEASE(punk) \
@@ -20,9 +19,15 @@ static UINT32 bufferFrameCount;
         (punk) = NULL;     \
     }
 
+enum WaveShape
+{
+    WAVE_SHAPE_SINE,
+    WAVE_SHAPE_SQUARE,
+    WAVE_SHAPE_TRIANGLE,
+    WAVE_SHAPE_SAWTOOTH
+};
 
-
-HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient,  WAVEFORMATEX  ** pwfx )
+HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient, WAVEFORMATEX **pwfx)
 {
     IMMDeviceEnumerator *pEnumerator = NULL;
     IMMDevice *pDevice = NULL;
@@ -45,17 +50,17 @@ HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient,  WAVEFORMATEX 
         return hr;
     }
 
-    //output Device name for debugging
+    // output Device name for debugging
     IPropertyStore *propertyStore;
     PROPVARIANT friendlyName;
-    hr =pDevice->OpenPropertyStore(STGM_READ, &propertyStore);
+    hr = pDevice->OpenPropertyStore(STGM_READ, &propertyStore);
     propertyStore->GetValue(PKEY_Device_FriendlyName, &friendlyName);
 
     OutputDebugStringW(friendlyName.pwszVal);
     OutputDebugStringA("\n");
 
     PropVariantClear(&friendlyName);
-    
+
     hr = pDevice->Activate(
         __uuidof(IAudioClient), CLSCTX_ALL,
         NULL, (void **)&pAudioClient);
@@ -91,7 +96,6 @@ HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient,  WAVEFORMATEX 
         return hr;
     }
 
-
     // Get the actual size of the allocated buffer.
     hr = pAudioClient->GetBufferSize(&bufferFrameCount);
     if (FAILED(hr))
@@ -117,73 +121,78 @@ HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient,  WAVEFORMATEX 
     return hr;
 }
 
-//to be called at the end of the program to release the audio client
+// to be called at the end of the program to release the audio client
 void win32_releaseALLAudioClient()
 {
     SAFE_RELEASE(pAudioClient)
 }
 
+void renderSquareWave(float frequency, float volume, float *buffer, int sampleRate, int numSamples, int &waveTime)
+{
+    for (int i = 0; i < numSamples; ++i)
+    {
+        bool isPositive = (waveTime++ % ((sampleRate * 2) / (int)frequency) < (sampleRate / (int)(frequency)));
+        buffer[i] = isPositive ? volume : -volume;
+    }
+}
+
+void renderSineWave(float frequency, float volume, float *buffer, int sampleRate, int numSamples, int &waveTime)
+{
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float t = (float)waveTime++ / (float)sampleRate;
+        buffer[i] = volume * sinf(3.14159265f * frequency * t);
+    }
+}
 
 void fillAudioBuffer(
     IAudioClient &audioClient,
     IAudioRenderClient *renderClient,
     WAVEFORMATEX *pwfx,
     DWORD &audioFlags,
-    int &wavetime)
+    int &wavetime,
+    float frequency = 800.0f,
+    float volume = 1.0f,
+    WaveShape waveShape = WAVE_SHAPE_SINE)
 {
-  BYTE *pAudioData;
+    BYTE *pAudioData;
 
-  UINT32 padding = 0;
-  HRESULT hr = audioClient.GetCurrentPadding(&padding);
-  if (SUCCEEDED(hr))
-  {
-    UINT32 availableFrameCount = bufferFrameCount - padding;
+    UINT32 padding = 0;
+    HRESULT hr = audioClient.GetCurrentPadding(&padding);
 
-    if (availableFrameCount > 0)
+    if (SUCCEEDED(hr))
     {
-      hr = renderClient->GetBuffer(availableFrameCount, &pAudioData);
-      if (SUCCEEDED(hr))
-      {
+        UINT32 availableFrameCount = bufferFrameCount - padding;
 
-        WORD BytePerSample = pwfx->wBitsPerSample / 8;
-        // Load data into the shared buffer.
-        for (UINT32 i = 0; i < availableFrameCount; i++)
+        if (availableFrameCount > 0)
         {
-
-          // we just do 800Hz square wave for testing
-          bool isPositive = (wavetime++ % (pwfx->nSamplesPerSec / 800) < (pwfx->nSamplesPerSec / 1600));
-
-          for (int channel = 0; channel < pwfx->nChannels; channel++)
-          {
-            if (pwfx->wBitsPerSample == 32)
+            hr = renderClient->GetBuffer(availableFrameCount, &pAudioData);
+            if (SUCCEEDED(hr))
             {
-              // Format FLOAT
-              *((float *)pAudioData) = isPositive ? 0.1f : -0.1f;
+                int numSamples = availableFrameCount * pwfx->nChannels;
+                switch (waveShape)
+                {
+                case WAVE_SHAPE_SQUARE:
+                    renderSquareWave(frequency, volume, (float *)pAudioData, pwfx->nSamplesPerSec, numSamples, wavetime);
+                    break;
+                default:
+                    renderSineWave(frequency, volume, (float *)pAudioData, pwfx->nSamplesPerSec, numSamples, wavetime);
+                    break;
+                }
+                hr = renderClient->ReleaseBuffer(availableFrameCount, audioFlags);
+                if (FAILED(hr))
+                {
+                    OutputDebugStringA("Failed to release audio buffer.\n");
+                }
             }
             else
             {
-              // Format INT16
-              *((int16_t *)pAudioData) = isPositive ? 3000 : -3000;
+                OutputDebugStringA("Failed to get audio buffer.\n");
             }
-            // On avance du nombre RÉEL d'octets par échantillon
-            pAudioData += BytePerSample;
-          }
         }
-
-        hr = renderClient->ReleaseBuffer(availableFrameCount, audioFlags);
-        if (FAILED(hr))
-        {
-          OutputDebugStringA("Failed to release audio buffer.\n");
-        }
-      }
-      else
-      {
-        OutputDebugStringA("Failed to get audio buffer.\n");
-      }
     }
-  }
-  else
-  {
-    OutputDebugStringA("Failed to get current padding.\n");
-  }
+    else
+    {
+        OutputDebugStringA("Failed to get current padding.\n");
+    }
 }

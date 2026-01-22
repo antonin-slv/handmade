@@ -222,12 +222,11 @@ int WINAPI WinMain(
       hasAudio = true;
     }
     fillAudioBuffer(*pAudioClient, pRenderAudioClient,
-                    pwfx, audioFlags, wavetime);
+                    pwfx, audioFlags, wavetime, 100.0f, 0.5f);
 
     hr = pAudioClient->Start();
   }
 
-  
   LARGE_INTEGER Frequency;
   QueryPerformanceFrequency(&Frequency);
   int64_t PerfCountFrequency = Frequency.QuadPart;
@@ -301,7 +300,7 @@ int WINAPI WinMain(
     char fps_buffer[256];
     sprintf_s(fps_buffer, "FPS: %f", fps);
     renderString(&globalBackBuffer, fps_buffer, 10, 10);
-    
+
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
     Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
@@ -311,7 +310,8 @@ int WINAPI WinMain(
     {
 
       fillAudioBuffer(*pAudioClient, pRenderAudioClient,
-                      pwfx, audioFlags, wavetime);
+                      pwfx, audioFlags, wavetime,
+                      40.0f, 0.15f);
     }
 
     // clears mouse movement delta
