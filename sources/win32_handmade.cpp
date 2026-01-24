@@ -147,7 +147,9 @@ LRESULT mainWindowCallback(
   }
   return rslt;
 }
-
+// after day 9 :
+// 2.432700 ms per frames for full debug build
+// 1.721500 with optimisation on
 int WINAPI WinMain(
     HINSTANCE Instance,
     HINSTANCE PrevInstance,
@@ -236,24 +238,28 @@ int WINAPI WinMain(
 
     hr = pAudioClient->Start();
   }
-
+  // performance - - - - -
   LARGE_INTEGER Frequency;
   QueryPerformanceFrequency(&Frequency);
   int64_t PerfCountFrequency = Frequency.QuadPart;
   LARGE_INTEGER LastCounter;
   LARGE_INTEGER StartCounter;
   QueryPerformanceCounter(&LastCounter);
+  long long avgFrameTime = 0;
+
   // actual loop
   int xOffset = 0;
   int yOffset = 0;
   running = true;
-
+  uint64_t framCount = 0;
   while (running)
   {
     float deltaT;
     QueryPerformanceCounter(&StartCounter);
     deltaT = (float)(StartCounter.QuadPart - LastCounter.QuadPart) / (float)PerfCountFrequency;
+    avgFrameTime = (avgFrameTime * framCount + (long long)(StartCounter.QuadPart - LastCounter.QuadPart)) / (long long)(framCount + 1);
     LastCounter = StartCounter;
+
     MSG message;
     while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
     {
@@ -308,8 +314,9 @@ int WINAPI WinMain(
 
     float fps = 1.0f / deltaT;
     char fps_buffer[256];
-    sprintf_s(fps_buffer, "FPS: %f", fps);
+    sprintf_s(fps_buffer, "FPS: %f\tMS: %f", fps, deltaT * 1000.0f);
     renderString(&globalBackBuffer, fps_buffer, 10, 10);
+    printf("%s\n", fps_buffer);
 
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
@@ -318,8 +325,8 @@ int WINAPI WinMain(
     // continue audio streaming
     if (hasAudio)
     {
-      //TODO : rajouter une gestion de la latence audio ici...
-      //actuellement 1 seconde, mais on veut quelque chose de réactif
+      // TODO : rajouter une gestion de la latence audio ici...
+      // actuellement 1 seconde, mais on veut quelque chose de réactif
       Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
     }
 
@@ -327,8 +334,15 @@ int WINAPI WinMain(
     MouseState.last_x = MouseState.x;
     MouseState.last_y = MouseState.y;
     MouseState.wheel_delta = 0;
+
+    // advance frame index
+    framCount++;
   }
 
+  OutputDebugStringA("Average frame time (ms): ");
+  char avgFrameTimeBuffer[256];
+  sprintf_s(avgFrameTimeBuffer, "%f\n", (float)((avgFrameTime * 1000.0f) / (double)PerfCountFrequency));
+  OutputDebugStringA(avgFrameTimeBuffer);
   // free audio resources (probably not necessary since the program is ending)
   if (hasAudio)
   {
