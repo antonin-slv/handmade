@@ -9,6 +9,23 @@
 #define REFTIMES_PER_SEC 10000000
 #define REFTIMES_PER_MILLISEC 10000
 
+enum WaveShape
+{
+    WAVE_SHAPE_SINE,
+    WAVE_SHAPE_SQUARE
+};
+
+struct Win32SoundOutput {
+    float Volume = 1.0f; // entre 0.0f et 1.0f
+
+    int SampleRate; // in Hz
+    float Frequency; // in Hz
+
+    int SampleIndex = 0;
+    WaveShape WaveShape;
+    int channels = 2;
+};
+
 static IAudioClient *pAudioClient;
 static UINT32 bufferFrameCount;
 
@@ -19,15 +36,9 @@ static UINT32 bufferFrameCount;
         (punk) = NULL;     \
     }
 
-enum WaveShape
-{
-    WAVE_SHAPE_SINE,
-    WAVE_SHAPE_SQUARE,
-    WAVE_SHAPE_TRIANGLE,
-    WAVE_SHAPE_SAWTOOTH
-};
 
-HRESULT win32_GetRenderClient(IAudioRenderClient **pRenderClient, WAVEFORMATEX **pwfx)
+
+HRESULT win32_GetAudioRenderClient(IAudioRenderClient **pRenderClient, WAVEFORMATEX **pwfx)
 {
     IMMDeviceEnumerator *pEnumerator = NULL;
     IMMDevice *pDevice = NULL;
@@ -127,33 +138,43 @@ void win32_releaseALLAudioClient()
     SAFE_RELEASE(pAudioClient)
 }
 
-void renderSquareWave(float frequency, float volume, float *buffer, int sampleRate, int numSamples, int &waveTime)
+void renderSquareWave( float *buffer, Win32SoundOutput &soundOutput, int frameCount)
 {
-    for (int i = 0; i < numSamples; ++i)
+    int samampleCount = frameCount * soundOutput.channels;
+    for (int i = 0; i < samampleCount; i +=1)
     {
-        bool isPositive = (waveTime++ % ((sampleRate * 2) / (int)frequency) < (sampleRate / (int)(frequency)));
-        buffer[i] = isPositive ? volume : -volume;
+        bool isPositive = (soundOutput.SampleIndex++ % ((soundOutput.SampleRate * 2) / (int)soundOutput.Frequency) < (soundOutput.SampleRate / (int)(soundOutput.Frequency)));
+        buffer[i] = isPositive ? soundOutput.Volume : -soundOutput.Volume;
     }
 }
 
-void renderSineWave(float frequency, float volume, float *buffer, int sampleRate, int numSamples, int &waveTime)
+void renderSineWave( float *buffer, Win32SoundOutput &soundOutput, int frameCount)
 {
-    for (int i = 0; i < numSamples; ++i)
+    //mono audio : 
+    // for (int i = 0; i < frameCount; ++i)
+    // {
+    //     float t = (float)soundOutput.SampleIndex++ / (float)soundOutput.SampleRate;
+    //     buffer[i] = soundOutput.Volume * sinf(3.14159265f * soundOutput.Frequency * t);
+    // }
+    // stereo audio :
+    int samampleCount = frameCount * soundOutput.channels;
+
+    float sinInnerFactor = (soundOutput.Frequency * 3.14159265f * 2.0f)/ (float)soundOutput.SampleRate;
+    for (int i = 0; i < samampleCount; i += soundOutput.channels)
     {
-        float t = (float)waveTime++ / (float)sampleRate;
-        buffer[i] = volume * sinf(3.14159265f * frequency * t);
+        for (int ch = 0; ch < soundOutput.channels; ++ch)
+        {
+            buffer[i + ch] = soundOutput.Volume * sinf(sinInnerFactor * (float)soundOutput.SampleIndex); // different frequency per channel
+        }
+        soundOutput.SampleIndex++;
     }
 }
 
-void fillAudioBuffer(
+void Win32FillAudioBuffer(
     IAudioClient &audioClient,
     IAudioRenderClient *renderClient,
-    WAVEFORMATEX *pwfx,
     DWORD &audioFlags,
-    int &wavetime,
-    float frequency = 800.0f,
-    float volume = 1.0f,
-    WaveShape waveShape = WAVE_SHAPE_SINE)
+    Win32SoundOutput &soundOutput)
 {
     BYTE *pAudioData;
 
@@ -169,14 +190,14 @@ void fillAudioBuffer(
             hr = renderClient->GetBuffer(availableFrameCount, &pAudioData);
             if (SUCCEEDED(hr))
             {
-                int numSamples = availableFrameCount * pwfx->nChannels;
-                switch (waveShape)
+                switch (soundOutput.WaveShape)
                 {
                 case WAVE_SHAPE_SQUARE:
-                    renderSquareWave(frequency, volume, (float *)pAudioData, pwfx->nSamplesPerSec, numSamples, wavetime);
+                    renderSquareWave((float *)pAudioData, soundOutput, availableFrameCount);
                     break;
+                case WAVE_SHAPE_SINE:
                 default:
-                    renderSineWave(frequency, volume, (float *)pAudioData, pwfx->nSamplesPerSec, numSamples, wavetime);
+                    renderSineWave((float *)pAudioData, soundOutput, availableFrameCount);
                     break;
                 }
                 hr = renderClient->ReleaseBuffer(availableFrameCount, audioFlags);

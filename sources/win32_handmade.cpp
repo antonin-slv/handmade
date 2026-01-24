@@ -214,15 +214,25 @@ int WINAPI WinMain(
   int wavetime = 0;
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+  Win32SoundOutput SoundStat = {};
+
   if (SUCCEEDED(hr))
   {
-    hr = win32_GetRenderClient(&pRenderAudioClient, &pwfx);
+    hr = win32_GetAudioRenderClient(&pRenderAudioClient, &pwfx);
+
     if (SUCCEEDED(hr))
     {
+
+      SoundStat.SampleRate = pwfx->nSamplesPerSec;
+      SoundStat.Frequency = 440.0f;
+      SoundStat.Volume = 0.5f;
+      SoundStat.SampleIndex = 0;
+      SoundStat.WaveShape = WAVE_SHAPE_SINE;
+
       hasAudio = true;
     }
-    fillAudioBuffer(*pAudioClient, pRenderAudioClient,
-                    pwfx, audioFlags, wavetime, 100.0f, 0.5f);
+    Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
 
     hr = pAudioClient->Start();
   }
@@ -308,10 +318,9 @@ int WINAPI WinMain(
     // continue audio streaming
     if (hasAudio)
     {
-
-      fillAudioBuffer(*pAudioClient, pRenderAudioClient,
-                      pwfx, audioFlags, wavetime,
-                      40.0f, 0.15f);
+      //TODO : rajouter une gestion de la latence audio ici...
+      //actuellement 1 seconde, mais on veut quelque chose de réactif
+      Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
     }
 
     // clears mouse movement delta
