@@ -383,7 +383,7 @@ int WINAPI WinMain(
     {
       // TODO : rajouter une gestion de la latence audio ici...
       // actuellement 1 seconde, mais on veut quelque chose de réactif
-      Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
+      win32FillMinimumAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat, deltaT);
     }
 
     // clears mouse movement delta

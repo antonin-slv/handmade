@@ -9,7 +9,6 @@
 static IAudioClient *pAudioClient;
 static uint32_t bufferFrameCount;
 
-
 #define SAFE_RELEASE(punk) \
     if ((punk) != NULL)    \
     {                      \
@@ -137,10 +136,66 @@ void Win32FillAudioBuffer(
             hr = renderClient->GetBuffer(availableFrameCount, &pAudioData);
             if (SUCCEEDED(hr))
             {
-                
+
                 HandmadeFillAudioBuffer((void *)pAudioData, soundOutput, availableFrameCount);
 
                 hr = renderClient->ReleaseBuffer(availableFrameCount, audioFlags);
+                if (FAILED(hr))
+                {
+                    OutputDebugStringA("Failed to release audio buffer.\n");
+                }
+            }
+            else
+            {
+                OutputDebugStringA("Failed to get audio buffer.\n");
+            }
+        }
+    }
+    else
+    {
+        OutputDebugStringA("Failed to get current padding.\n");
+    }
+}
+
+void win32FillMinimumAudioBuffer(
+    IAudioClient &audioClient,
+    IAudioRenderClient *renderClient,
+    DWORD &audioFlags,
+    HandmadeSoundOutput &soundOutput,
+    float lastFrameDuration)
+{
+    BYTE *pAudioData;
+
+    UINT32 padding = 0;
+    HRESULT hr = audioClient.GetCurrentPadding(&padding);
+
+    if (SUCCEEDED(hr))
+    {
+        UINT32 availableFrameCount = bufferFrameCount - padding;
+
+        // calculate time remaining in buffer
+        float currentBufferedDurationSec = (float)padding / (float)soundOutput.SampleRate;
+
+        // we make sure the buffer fills up to 2 time the last frame duration
+
+        float targetBufferedDurationSec = lastFrameDuration * 10.0f;
+        float timeToFillSec = targetBufferedDurationSec - currentBufferedDurationSec;
+        if (timeToFillSec < 0.0f)
+            timeToFillSec = 0.0f;
+
+        UINT32 framesToWrite = (UINT32)(timeToFillSec * (float)soundOutput.SampleRate);
+        if (framesToWrite > availableFrameCount)
+            framesToWrite = availableFrameCount;
+
+        if (framesToWrite > 0)
+        {
+            hr = renderClient->GetBuffer(framesToWrite, &pAudioData);
+            if (SUCCEEDED(hr))
+            {
+
+                HandmadeFillAudioBuffer((void *)pAudioData, soundOutput, framesToWrite);
+
+                hr = renderClient->ReleaseBuffer(framesToWrite, audioFlags);
                 if (FAILED(hr))
                 {
                     OutputDebugStringA("Failed to release audio buffer.\n");
