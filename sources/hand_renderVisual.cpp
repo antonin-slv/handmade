@@ -1,5 +1,5 @@
-#include <windows.h>
 #include <stdint.h>
+#include <string>
 
 #include "font8x8_basic.h"
 /**
@@ -7,9 +7,8 @@
  *
  */
 
-struct Win32OffscreenBuffer
+struct HandmadeScreenBuffer
 {
-    BITMAPINFO Info;
     void *Memory;
     int Width;
     int Height;
@@ -17,7 +16,7 @@ struct Win32OffscreenBuffer
     int BytesPerPixel;
 };
 
-void renderCharacter(Win32OffscreenBuffer *buffer, char character, int x, int y)
+void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
 {
     uint8_t *row = (uint8_t *)buffer->Memory + y * buffer->Pitch + x * 4;
     for (int glyph_y = 0; glyph_y < 8; ++glyph_y)
@@ -40,7 +39,7 @@ void renderCharacter(Win32OffscreenBuffer *buffer, char character, int x, int y)
     }
 }
 
-void renderString(Win32OffscreenBuffer *buffer, const std::string &str, int x, int y)
+void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y)
 {
     int cursor_x = x;
     for (char c : str)
@@ -50,50 +49,8 @@ void renderString(Win32OffscreenBuffer *buffer, const std::string &str, int x, i
     }
 }
 
-static void ResizeDIBSection(Win32OffscreenBuffer *Buffer, int Width, int Height)
-{
 
-    if (Buffer->Memory)
-    {
-        VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
-    }
-
-    Buffer->Width = Width;
-    Buffer->Height = Height;
-    Buffer->BytesPerPixel = 4;
-
-    Buffer->Info.bmiHeader.biSize = sizeof(Buffer->Info.bmiHeader);
-    Buffer->Info.bmiHeader.biWidth = Buffer->Width;
-    Buffer->Info.bmiHeader.biHeight = -Buffer->Height;
-    Buffer->Info.bmiHeader.biPlanes = 1;
-    Buffer->Info.bmiHeader.biBitCount = 32;
-    Buffer->Info.bmiHeader.biCompression = BI_RGB;
-    Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
-
-    int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
-    Buffer->Memory = VirtualAlloc(
-        nullptr,
-        bitMapMemorySize,
-        MEM_RESERVE | MEM_COMMIT,
-        PAGE_READWRITE);
-}
-
-static void Win32CopyBufferToWindow(
-    HDC WindowContext, int WindowWidth, int WindowHeight,
-    Win32OffscreenBuffer *Buffer,
-    int X, int Y, int Width, int Height)
-{
-
-    StretchDIBits(
-        WindowContext,
-        0, 0, WindowWidth, WindowHeight,
-        0, 0, Buffer->Width, Buffer->Height,
-        Buffer->Memory,
-        &Buffer->Info,
-        DIB_RGB_COLORS, SRCCOPY);
-}
-
-void RenderGradient(Win32OffscreenBuffer *Buffer, int XOffset, int YOffset)
+void RenderGradient(HandmadeScreenBuffer *Buffer, int XOffset, int YOffset)
 {
 
     int small_white_square_width = 1;
@@ -124,7 +81,7 @@ void RenderGradient(Win32OffscreenBuffer *Buffer, int XOffset, int YOffset)
     }
 }
 
-void renderCheckerboard(Win32OffscreenBuffer *Buffer, const int SquareSize, const int x_offset, const int y_offset, int red_square_x = 0, int red_square_y = 0)
+void renderCheckerboard(HandmadeScreenBuffer *Buffer, const int SquareSize, const int x_offset, const int y_offset, int red_square_x = 0, int red_square_y = 0)
 {
 
     int squareXindex = 0;
@@ -179,7 +136,7 @@ void renderCheckerboard(Win32OffscreenBuffer *Buffer, const int SquareSize, cons
     }
 }
 
-void renderArrayPattern(Win32OffscreenBuffer *Buffer,
+void renderArrayPattern(HandmadeScreenBuffer *Buffer,
                         int *array, int array_width, int array_height,
                         float cell_size = 0, int x_offset = 0, int y_offset = 0,
                         float zoom_level = 1.0f)

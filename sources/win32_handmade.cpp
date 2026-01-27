@@ -8,10 +8,11 @@
 #include <audioclient.h>
 #include <Audiopolicy.h>
 
-#include "win32_audio_engine.cpp"
+#include "win32_audioLayer.cpp"
 #include "win32_controller.cpp"
-#include "win32_keyboard.h"
-#include "win32_renderVisual.cpp"
+
+#include "hand_keyboard.h"
+#include "hand_renderVisual.cpp"
 
 struct Win32WindowDimension
 {
@@ -19,7 +20,8 @@ struct Win32WindowDimension
   int Height;
 };
 
-static Win32OffscreenBuffer globalBackBuffer;
+static HandmadeScreenBuffer globalBackBuffer;
+static BITMAPINFO globalBackBufferInfo;
 // TODO : Temporary (has to get mor grannular control over what is included)
 static bool running;
 
@@ -27,6 +29,49 @@ static bool running;
 static keyboard_state KeyboardState;
 static mouse_state MouseState;
 static float zoom_level = 1.0f;
+
+static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInfo, int Width, int Height)
+{
+
+  if (Buffer->Memory)
+  {
+    VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
+  }
+
+  Buffer->Width = Width;
+  Buffer->Height = Height;
+  Buffer->BytesPerPixel = 4;
+
+  BufferInfo->bmiHeader.biSize = sizeof(BufferInfo->bmiHeader);
+  BufferInfo->bmiHeader.biWidth = Buffer->Width;
+  BufferInfo->bmiHeader.biHeight = -Buffer->Height;
+  BufferInfo->bmiHeader.biPlanes = 1;
+  BufferInfo->bmiHeader.biBitCount = 32;
+  BufferInfo->bmiHeader.biCompression = BI_RGB;
+  Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
+
+  int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
+  Buffer->Memory = VirtualAlloc(
+      nullptr,
+      bitMapMemorySize,
+      MEM_RESERVE | MEM_COMMIT,
+      PAGE_READWRITE);
+}
+
+static void Win32CopyBufferToWindow(
+    HDC WindowContext, int WindowWidth, int WindowHeight,
+    HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInfo,
+    int X, int Y, int Width, int Height)
+{
+
+  StretchDIBits(
+      WindowContext,
+      0, 0, WindowWidth, WindowHeight,
+      0, 0, Buffer->Width, Buffer->Height,
+      Buffer->Memory,
+      BufferInfo,
+      DIB_RGB_COLORS, SRCCOPY);
+}
 
 static Win32WindowDimension Win32GetWindowDimension(HWND Window)
 {
@@ -85,7 +130,7 @@ LRESULT mainWindowCallback(
     int X = lpPaint.rcPaint.left;
     int Y = lpPaint.rcPaint.top;
     Win32WindowDimension window = Win32GetWindowDimension(Window);
-    Win32CopyBufferToWindow(DeviceContext, window.Width, window.Height, &globalBackBuffer, X, Y, Width, Height);
+    Win32CopyBufferToWindow(DeviceContext, window.Width, window.Height, &globalBackBuffer, &globalBackBufferInfo, X, Y, Width, Height);
 
     EndPaint(Window, &lpPaint);
   }
@@ -135,7 +180,7 @@ LRESULT mainWindowCallback(
   case WM_XBUTTONDOWN:
   case WM_XBUTTONUP:
   {
-    MouseState.set_mouse((uint32_t)wParam);
+    MouseState.SetMouseStateWindows((uint32_t)wParam);
   }
   break;
 
@@ -191,7 +236,7 @@ int WINAPI WinMain(
   Win32WindowDimension windowDim = Win32GetWindowDimension(window);
   // made here to match the initial window size to avoid stretching
   //  TODO : should be initialized earlier with better stretching algorithm)
-  ResizeDIBSection(&globalBackBuffer, windowDim.Width, windowDim.Height);
+  ResizeDIBSection(&globalBackBuffer, &globalBackBufferInfo, windowDim.Width, windowDim.Height);
 
   int array_width = 2000;
   int array_height = 2000;
@@ -217,7 +262,7 @@ int WINAPI WinMain(
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-  Win32SoundOutput SoundStat = {};
+  HandmadeSoundOutput SoundStat = {};
 
   if (SUCCEEDED(hr))
   {
@@ -294,6 +339,12 @@ int WINAPI WinMain(
     {
       xOffset -= (MouseState.x - MouseState.last_x);
       yOffset -= (MouseState.y - MouseState.last_y);
+
+      SoundStat.Frequency += (float)(MouseState.x - MouseState.last_x) * 100.0f * deltaT;
+      if (SoundStat.Frequency < 20.0f)
+        SoundStat.Frequency = 20.0f;
+      else if (SoundStat.Frequency > 20000.0f)
+        SoundStat.Frequency = 20000.0f;
     }
     if (MouseState.wheel_delta != 0)
     {
@@ -308,6 +359,7 @@ int WINAPI WinMain(
       xOffset = (int)pixel_change_x;
       yOffset = (int)pixel_change_y;
     }
+
     // RenderGradient(&globalBackBuffer, xOffset, yOffset);
     // renderCheckerboard(&globalBackBuffer, 4, xOffset, yOffset, 0, 0);
     renderArrayPattern(&globalBackBuffer, test_array, array_width, array_height, 1.0f, xOffset, yOffset, zoom_level);
@@ -316,11 +368,15 @@ int WINAPI WinMain(
     char fps_buffer[256];
     sprintf_s(fps_buffer, "FPS: %f\tMS: %f", fps, deltaT * 1000.0f);
     renderString(&globalBackBuffer, fps_buffer, 10, 10);
+
+    char sound_buffer[256];
+    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat.Frequency);
+    renderString(&globalBackBuffer, sound_buffer, 10, 30);
     printf("%s\n", fps_buffer);
 
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
-    Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, 0, 0, Dimension.Width, Dimension.Height);
+    Win32CopyBufferToWindow(DeviceContext, Dimension.Width, Dimension.Height, &globalBackBuffer, &globalBackBufferInfo, 0, 0, Dimension.Width, Dimension.Height);
     ReleaseDC(window, DeviceContext);
     // continue audio streaming
     if (hasAudio)
