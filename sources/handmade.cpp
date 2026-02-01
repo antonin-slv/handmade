@@ -1,10 +1,8 @@
 #include "handmade.h"
 
-
 #include "font8x8_basic.h"
 #include <stdint.h>
 #include <string>
-
 
 // visual engine functions
 void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
@@ -37,9 +35,12 @@ void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, i
     {
         renderCharacter(buffer, c, cursor_x, y);
         cursor_x += 8; // Advance cursor by character width
+        if (cursor_x + 8 > buffer->Width)
+        {
+            break; // Stop rendering if we exceed buffer width
+        }
     }
 }
-
 
 void RenderGradient(HandmadeScreenBuffer *Buffer, int XOffset, int YOffset)
 {
@@ -117,8 +118,7 @@ void renderArrayPattern(HandmadeScreenBuffer *Buffer,
     }
 }
 
-
-//audio functions  - - - - - - - - - - -  
+// audio functions  - - - - - - - - - - -
 
 void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCount, float &lastPhase)
 {
@@ -129,7 +129,7 @@ void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCo
     //      buffer[i] = soundOutput.Volume * sinf(3.14159265f * soundOutput.Frequency * t);
     //  }
     //  stereo audio :
-    int samampleCount = frameCount * soundOutput.channels;
+    int sampleCount = frameCount * soundOutput.channels;
 
     //
     float sinInnerFactor = (soundOutput.Frequency * 3.14159265f * 2.0f) / (float)soundOutput.SampleRate;
@@ -139,7 +139,7 @@ void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCo
         soundOutput.SampleIndex += phaseDiff;
     }
 
-    for (int i = 0; i < samampleCount; i += soundOutput.channels)
+    for (int i = 0; i < sampleCount; i += soundOutput.channels)
     {
         for (int ch = 0; ch < soundOutput.channels; ++ch)
         {
@@ -151,24 +151,92 @@ void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCo
     lastPhase = sinInnerFactor * (float)soundOutput.SampleIndex;
 }
 
-
 void HandmadeFillAudioBuffer(
     void *audioBuffer,
     HandmadeSoundOutput &soundOutput,
-    int frameCount) {
+    int frameCount)
+{
 
     float *buffer = (float *)audioBuffer;
     int sampleCount = frameCount * soundOutput.channels;
 
-   renderSineWave(buffer, soundOutput, frameCount, SinWaveLastPhase);
+    renderSineWave(buffer, soundOutput, frameCount, SinWaveLastPhase);
 }
 
+// generical game functions :
 
-
-// generical game functions : 
-
-
-void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, int xOffset, int yOffset, float zoom_level)
+void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputState, float deltaT)
 {
-    renderArrayPattern(Buffer, nullptr, 0, 0, 20.0f, xOffset, yOffset, zoom_level);
+    static int xOffset = 0;
+    static int yOffset = 0;
+    static float zoom_level = 1.0f;     
+    mouse_state &MouseState = InputState.Mouse;
+    if (MouseState.is_left_down())
+    {
+      xOffset -= (MouseState.x - MouseState.last_x);
+      yOffset -= (MouseState.y - MouseState.last_y);
+
+      SoundStat.Frequency += (float)(MouseState.x - MouseState.last_x) * 100.0f * deltaT;
+      if (SoundStat.Frequency < 20.0f)
+        SoundStat.Frequency = 20.0f;
+      else if (SoundStat.Frequency > 20000.0f)
+        SoundStat.Frequency = 20000.0f;
+    }
+    if (MouseState.wheel_delta != 0)
+    {
+      float prev_zoom = zoom_level;
+      zoom_level *= (1.0f + (float)MouseState.wheel_delta / 4000.0f);
+
+      // pour centrer le zoom : combien de pixels sont ajoutés / retirés ?
+      //  si zoom_level augmente, on crop dans l'image, donc on enlève des pixels
+      float pixel_change_x = (zoom_level / prev_zoom) * (Buffer->Width / 2 + xOffset) - (Buffer->Width / 2);
+      float pixel_change_y = (zoom_level / prev_zoom) * (Buffer->Height / 2 + yOffset) - (Buffer->Height / 2);
+
+      xOffset = (int)pixel_change_x;
+      yOffset = (int)pixel_change_y;
+    }
+
+    renderArrayPattern(Buffer, test_array, array_width, array_height, 20.0f, xOffset, yOffset, zoom_level);
+
+    float fps = 1.0f / deltaT;
+    char fps_buffer[256];
+    sprintf_s(fps_buffer, "FPS: %f\tMS: %f", fps, deltaT * 1000.0f);
+    renderString(Buffer, fps_buffer, 10, 10);
+
+    char sound_buffer[256];
+    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat.Frequency);
+    renderString(Buffer, sound_buffer, 10, 30);
+
+    char keyPressBuffer[256] = {};
+    for (int i = 0; i < 256; ++i)
+    {
+        keyPressBuffer[i] = InputState.Keyboard.keys[i].ended_down ?  toascii(i) : ' ';
+    }
+    renderString(Buffer, keyPressBuffer, 10, 50);
+}
+
+void HandmadeInitialize()
+{
+    // nothing for now
+    array_width = 2000;
+    array_height = 2000;
+    test_array = (int *)malloc(array_width * array_height * sizeof(int));
+    for (int y = 0; y < array_height; y++)
+    {
+        for (int x = 0; x < array_width; x++)
+        {
+            uint8_t red = x * 5 % 256;
+            uint8_t green = y * 5 % 256;
+            uint8_t blue = 0;
+            test_array[y * array_width + x] = (red << 16) | (green << 8) | blue;
+        }
+    }
+}
+
+void HandmadeInitializeAudio(int SampleRate)
+{
+    SoundStat.SampleRate = SampleRate;
+    SoundStat.Frequency = 440.0f;
+    SoundStat.Volume = 0.5f;
+    SoundStat.SampleIndex = 0;
 }

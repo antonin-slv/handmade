@@ -1,6 +1,7 @@
 #ifndef HANDMADE_H
 #define HANDMADE_H
 #include <string>
+#include  "hand_keyboard.h"
 
 struct HandmadeScreenBuffer
 {
@@ -19,26 +20,46 @@ struct HandmadeSoundOutput
 
     int SampleIndex = 0;
     int channels = 2;
-    int bitsPerSample = 32;
 };
 
 static float SinWaveLastPhase = 0.0f;
 
+
+static HandmadeSoundOutput SoundStat = {};
+
+//temp array 
+static int array_width;
+static int array_height;
+static int *test_array = nullptr;
+
+
 /*
     Functions that fills frameCount Frames into the audioBuffer
+    -> should be called regularly to keep the audio buffer filled I guess
 */
 void HandmadeFillAudioBuffer(
     void *audioBuffer,
     HandmadeSoundOutput &soundOutput,
     int frameCount);
 
-void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, int xOffset, int yOffset, float zoom_level);
 
 void renderArrayPattern(HandmadeScreenBuffer *Buffer,
                         int *array, int array_width, int array_height,
                         float cell_size, int x_offset, int y_offset,
                         float zoom_level);
-                        
+
 void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y);
+
+
+
+//in the end the only function ?
+static void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputState, float deltaT = 0.0f);
+
+
+static void HandmadeInitialize();
+
+static void HandmadeInitializeAudio(int SampleRate = 48000);
+
+
 
 #endif // HANDMADE_H

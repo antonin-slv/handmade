@@ -159,6 +159,46 @@ void Win32FillAudioBuffer(
     }
 }
 
+HRESULT win32GetFramesToFill(
+    IAudioClient &audioClient,
+    UINT32 &outFramesToWrite,
+    int SampleRate,
+    float lastFrameDuration)
+{
+    UINT32 padding = 0;
+    HRESULT hr = audioClient.GetCurrentPadding(&padding);
+
+    outFramesToWrite = 0;
+
+    if (SUCCEEDED(hr))
+    {
+        UINT32 availableFrameCount = bufferFrameCount - padding;
+
+        // calculate time remaining in buffer
+        float currentBufferedDurationSec = (float)padding / (float)SampleRate;
+
+        // we make sure the buffer fills between at least 10ms and at least 2 frames worth of time
+
+        float targetBufferedDurationSec = lastFrameDuration * 2.0f;
+        if (targetBufferedDurationSec < 0.015f)
+            targetBufferedDurationSec = 0.015f;
+        float timeToFillSec = targetBufferedDurationSec - currentBufferedDurationSec;
+        if (timeToFillSec < 0.0f)
+            timeToFillSec = 0.0f;
+
+        UINT32 framesToWrite = (UINT32)(timeToFillSec * SampleRate);
+        if (framesToWrite > availableFrameCount)
+            framesToWrite = availableFrameCount;
+
+        outFramesToWrite = framesToWrite;
+    }
+    else
+    {
+        OutputDebugStringA("Failed to get current padding.\n");
+    }
+    return hr;
+}
+
 void win32FillMinimumAudioBuffer(
     IAudioClient &audioClient,
     IAudioRenderClient *renderClient,
@@ -168,27 +208,15 @@ void win32FillMinimumAudioBuffer(
 {
     BYTE *pAudioData;
 
-    UINT32 padding = 0;
-    HRESULT hr = audioClient.GetCurrentPadding(&padding);
+    UINT32 framesToWrite = 0;
+    HRESULT hr = win32GetFramesToFill(
+        audioClient,
+        framesToWrite,
+        soundOutput.SampleRate,
+        lastFrameDuration);
 
     if (SUCCEEDED(hr))
     {
-        UINT32 availableFrameCount = bufferFrameCount - padding;
-
-        // calculate time remaining in buffer
-        float currentBufferedDurationSec = (float)padding / (float)soundOutput.SampleRate;
-
-        // we make sure the buffer fills up to 2 time the last frame duration
-
-        float targetBufferedDurationSec = lastFrameDuration * 10.0f;
-        float timeToFillSec = targetBufferedDurationSec - currentBufferedDurationSec;
-        if (timeToFillSec < 0.0f)
-            timeToFillSec = 0.0f;
-
-        UINT32 framesToWrite = (UINT32)(timeToFillSec * (float)soundOutput.SampleRate);
-        if (framesToWrite > availableFrameCount)
-            framesToWrite = availableFrameCount;
-
         if (framesToWrite > 0)
         {
             hr = renderClient->GetBuffer(framesToWrite, &pAudioData);

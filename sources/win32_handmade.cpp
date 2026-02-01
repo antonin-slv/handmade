@@ -8,17 +8,15 @@
 #include <audioclient.h>
 #include <Audiopolicy.h>
 
+#include "win32_handmade.h"
+
 #include "win32_audioLayer.cpp"
 #include "win32_controller.cpp"
 
 #include "hand_keyboard.h"
 #include "handmade.cpp"
 
-struct Win32WindowDimension
-{
-  int Width;
-  int Height;
-};
+
 
 static HandmadeScreenBuffer globalBackBuffer;
 static BITMAPINFO globalBackBufferInfo;
@@ -26,8 +24,7 @@ static BITMAPINFO globalBackBufferInfo;
 static bool running;
 
 // TODO : Temporary static
-static keyboard_state KeyboardState;
-static mouse_state MouseState;
+static unified_input InputState;
 static float zoom_level = 1.0f;
 
 static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInfo, int Width, int Height)
@@ -93,6 +90,8 @@ LRESULT mainWindowCallback(
 {
   LRESULT rslt = 0;
 
+  mouse_state &MouseState = InputState.Mouse;
+
   switch (Message)
   {
   case WM_DESTROY:
@@ -144,10 +143,12 @@ LRESULT mainWindowCallback(
     uint32_t VKCode = wParam;
 
     WORD keyFlags = HIWORD(lParam);
-    bool isKeyReleased = (keyFlags & KF_UP) != KF_UP;
-    KeyboardState.set_key_state((int)VKCode, isKeyReleased);
+    bool isKeyReleased = (keyFlags & KF_UP) == KF_UP;
 
-    bool wasDown = (keyFlags & KF_REPEAT) != KF_REPEAT;
+    button_state &keyState = InputState.Keyboard.keys[VKCode];
+    keyState.ended_down = !isKeyReleased;
+    keyState.half_transition_count += 1;
+
     bool altKeyWasDown = (lParam & (1 << 29)) != 0;
 
     if (altKeyWasDown && VKCode == VK_F4)
@@ -159,30 +160,40 @@ LRESULT mainWindowCallback(
 
   case WM_MOUSEMOVE:
   {
-    MouseState.last_x = MouseState.x;
-    MouseState.last_y = MouseState.y;
-
     MouseState.x = GET_X_LPARAM(lParam);
     MouseState.y = GET_Y_LPARAM(lParam);
   }
   break;
   case WM_MOUSEWHEEL:
   {
-    MouseState.wheel_delta = GET_WHEEL_DELTA_WPARAM(wParam);
-  }
-
-  case WM_LBUTTONDOWN:
-  case WM_LBUTTONUP:
-  case WM_RBUTTONDOWN:
-  case WM_RBUTTONUP:
-  case WM_MBUTTONDOWN:
-  case WM_MBUTTONUP:
-  case WM_XBUTTONDOWN:
-  case WM_XBUTTONUP:
-  {
-    MouseState.SetMouseStateWindows((uint32_t)wParam);
+    MouseState.wheel_delta += GET_WHEEL_DELTA_WPARAM(wParam);
   }
   break;
+
+  case WM_LBUTTONDOWN:
+    MouseState.onButtonAction(MouseButton_Left, true);
+    break;
+  case WM_LBUTTONUP:
+    MouseState.onButtonAction(MouseButton_Left, false);
+    break;
+  case WM_RBUTTONDOWN:
+    MouseState.onButtonAction(MouseButton_Right, true);
+    break;
+  case WM_RBUTTONUP:
+    MouseState.onButtonAction(MouseButton_Right, false);
+    break;
+  case WM_MBUTTONDOWN:
+    MouseState.onButtonAction(MouseButton_Middle, true);
+    break;
+  case WM_MBUTTONUP:
+    MouseState.onButtonAction(MouseButton_Middle, false);
+    break;
+  case WM_XBUTTONDOWN:
+    MouseState.onButtonAction((HIWORD(wParam) & XBUTTON1) ? MouseButton_X1 : MouseButton_X2, true);
+    break;
+  case WM_XBUTTONUP:
+    MouseState.onButtonAction((HIWORD(wParam) & XBUTTON1) ? MouseButton_X1 : MouseButton_X2, false);
+    break;
 
   default:
   {
@@ -238,19 +249,8 @@ int WINAPI WinMain(
   //  TODO : should be initialized earlier with better stretching algorithm)
   ResizeDIBSection(&globalBackBuffer, &globalBackBufferInfo, windowDim.Width, windowDim.Height);
 
-  int array_width = 2000;
-  int array_height = 2000;
-  int *test_array = (int *)malloc(array_width * array_height * sizeof(int));
-  for (int y = 0; y < array_height; y++)
-  {
-    for (int x = 0; x < array_width; x++)
-    {
-      uint8_t red = x * 5 % 256;
-      uint8_t green = y * 5 % 256;
-      uint8_t blue = 0;
-      test_array[y * array_width + x] = (red << 16) | (green << 8) | blue;
-    }
-  }
+  // initialize game :
+  HandmadeInitialize();
 
   // audio initialization
   bool hasAudio = false;
@@ -262,20 +262,13 @@ int WINAPI WinMain(
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-  HandmadeSoundOutput SoundStat = {};
-
   if (SUCCEEDED(hr))
   {
     hr = win32_GetAudioRenderClient(&pRenderAudioClient, &pwfx);
 
     if (SUCCEEDED(hr))
     {
-
-      SoundStat.SampleRate = pwfx->nSamplesPerSec;
-      SoundStat.Frequency = 440.0f;
-      SoundStat.Volume = 0.5f;
-      SoundStat.SampleIndex = 0;
-
+      HandmadeInitializeAudio(pwfx->nSamplesPerSec);
       hasAudio = true;
     }
     Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
@@ -334,44 +327,7 @@ int WINAPI WinMain(
 
     HDC DeviceContext = GetDC(window);
 
-    if (MouseState.is_left_down())
-    {
-      xOffset -= (MouseState.x - MouseState.last_x);
-      yOffset -= (MouseState.y - MouseState.last_y);
-
-      SoundStat.Frequency += (float)(MouseState.x - MouseState.last_x) * 100.0f * deltaT;
-      if (SoundStat.Frequency < 20.0f)
-        SoundStat.Frequency = 20.0f;
-      else if (SoundStat.Frequency > 20000.0f)
-        SoundStat.Frequency = 20000.0f;
-    }
-    if (MouseState.wheel_delta != 0)
-    {
-      float prev_zoom = zoom_level;
-      zoom_level *= (1.0f + (float)MouseState.wheel_delta / 4000.0f);
-
-      // pour centrer le zoom : combien de pixels sont ajoutés / retirés ?
-      //  si zoom_level augmente, on crop dans l'image, donc on enlève des pixels
-      float pixel_change_x = (zoom_level / prev_zoom) * (globalBackBuffer.Width / 2 + xOffset) - (globalBackBuffer.Width / 2);
-      float pixel_change_y = (zoom_level / prev_zoom) * (globalBackBuffer.Height / 2 + yOffset) - (globalBackBuffer.Height / 2);
-
-      xOffset = (int)pixel_change_x;
-      yOffset = (int)pixel_change_y;
-    }
-
-    // RenderGradient(&globalBackBuffer, xOffset, yOffset);
-    // renderCheckerboard(&globalBackBuffer, 4, xOffset, yOffset, 0, 0);
-    renderArrayPattern(&globalBackBuffer, test_array, array_width, array_height, 1.0f, xOffset, yOffset, zoom_level);
-
-    float fps = 1.0f / deltaT;
-    char fps_buffer[256];
-    sprintf_s(fps_buffer, "FPS: %f\tMS: %f", fps, deltaT * 1000.0f);
-    renderString(&globalBackBuffer, fps_buffer, 10, 10);
-
-    char sound_buffer[256];
-    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat.Frequency);
-    renderString(&globalBackBuffer, sound_buffer, 10, 30);
-    printf("%s\n", fps_buffer);
+    HandmadeUpdateAndRender(&globalBackBuffer, InputState, deltaT);
 
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
@@ -386,9 +342,7 @@ int WINAPI WinMain(
     }
 
     // clears mouse movement delta
-    MouseState.last_x = MouseState.x;
-    MouseState.last_y = MouseState.y;
-    MouseState.wheel_delta = 0;
+    InputState.resetOnEndFrame();
 
     // advance frame index
     framCount++;

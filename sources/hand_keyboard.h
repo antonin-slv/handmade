@@ -1,4 +1,29 @@
+#ifndef HAND_KEYBOARD_H
+#define HAND_KEYBOARD_H
+
+
 #include <cstdint>
+
+enum standard_keys
+{
+    Key_Up = 0x26,
+    Key_Down = 0x28,
+    Key_Left = 0x25,
+    Key_Right = 0x27,
+    Key_Escape = 0x1B,
+    Key_Space = 0x20,
+    Key_Enter = 0x0D,
+    Key_Shift = 0x10,
+    Key_Ctrl = 0x11,
+    Key_Alt = 0x12,
+};
+
+struct button_state
+{
+    bool started_down = false;
+    bool ended_down = false;
+    uint8_t half_transition_count = 0;
+};
 
 struct keyboard_state
 {
@@ -9,28 +34,36 @@ struct keyboard_state
     char key_left = 'Q';
     char key_right = 'D';
 
-    bool keys[256] = {0};
+    button_state keys[256];
 
-    bool is_shift_down() const { return keys[0x10] || keys[0xA0] || keys[0xA1]; }
+    bool is_shift_down() const { return keys[Key_Shift].ended_down || keys[0xA0].ended_down || keys[0xA1].ended_down; }
 
-    bool is_ctrl_down() const { return keys[0x11] || keys[0xA2] || keys[0xA3]; }
+    bool is_ctrl_down() const { return keys[Key_Ctrl].ended_down || keys[0xA2].ended_down || keys[0xA3].ended_down; }
 
-    bool is_alt_down() const { return keys[0x12] || keys[0xA4] || keys[0xA5]; }
-    bool is_escape_down() const { return keys[0x1B]; }
+    bool is_alt_down() const { return keys[Key_Alt].ended_down || keys[0xA4].ended_down || keys[0xA5].ended_down; }
+    bool is_escape_down() const { return keys[Key_Escape].ended_down; }
 
-    bool is_key_down(int vk_code) const { return keys[vk_code]; }
+    bool is_key_down(int vk_code) const { return keys[vk_code].ended_down; }
+    bool was_key_pressed(int vk_code) const { return keys[vk_code].ended_down && (keys[vk_code].half_transition_count > 0); }
+    bool was_key_released(int vk_code) const { return !keys[vk_code].ended_down && (keys[vk_code].half_transition_count > 0); }
 
-    void set_key_state(int vk_code, bool down) { keys[vk_code] = down; }
+    void reset_on_end_frame()
+    {
+        for (int i = 0; i < 256; ++i)
+        {
+            keys[i].half_transition_count = 0;
+            keys[i].started_down = keys[i].ended_down;
+        }
+    }
 };
 
-
-enum MouseButtonMasks
+enum MouseButtonIndex : uint8_t
 {
-    MouseButton_Left = 0x1,
-    MouseButton_Right = 0x2,
-    MouseButton_Middle = 0x4,
-    MouseButton_X1 = 0x8,
-    MouseButton_X2 = 0x10
+    MouseButton_Left = 0,
+    MouseButton_Right = 1,
+    MouseButton_Middle = 2,
+    MouseButton_X1 = 3,
+    MouseButton_X2 = 4
 };
 
 struct mouse_state
@@ -44,26 +77,9 @@ struct mouse_state
 
     int wheel_delta = 0;
 
+    button_state buttons[5];
 
-    uint8_t state = 0;
-
-
-    void SetMouseStateWindows(uint32_t button_mask)
-    {
-        state = 0;
-        if (button_mask & 0x0001)
-            state |= MouseButton_Left;
-        if (button_mask & 0x0002)
-            state |= MouseButton_Right;
-        if (button_mask & 0x0010)
-            state |= MouseButton_Middle;
-        if (button_mask & 0x0020)
-            state |= MouseButton_X1;
-        if (button_mask & 0x0040)
-            state |= MouseButton_X2;
-    }
-
-    bool is_button_down(uint8_t button_mask) const { return (state & button_mask) != 0; }
+    bool is_button_down(uint8_t buttonIndex) const { return buttons[buttonIndex].ended_down; }
 
     bool is_left_down() const { return is_button_down(MouseButton_Left); }
 
@@ -74,4 +90,38 @@ struct mouse_state
 
     bool is_x2_down() const { return is_button_down(MouseButton_X2); }
 
+    void onButtonAction(uint8_t buttonIndex, bool isPressed)
+    {
+        button_state &button = buttons[buttonIndex];
+        button.half_transition_count += 1;
+        button.ended_down = isPressed;
+    }
+
+    void resetOnEndFrame()
+    {
+        wheel_delta = 0;
+        last_x = x;
+        last_y = y;
+        for (int i = 0; i < 5; ++i)
+        {
+            buttons[i].half_transition_count = 0;
+            buttons[i].started_down = buttons[i].ended_down;
+        }
+    }
 };
+
+
+
+struct unified_input
+{
+    keyboard_state Keyboard;
+    mouse_state Mouse;
+
+    void resetOnEndFrame()
+    {
+        Keyboard.reset_on_end_frame();
+        Mouse.resetOnEndFrame();
+    }
+};
+
+#endif // HAND_KEYBOARD_H
