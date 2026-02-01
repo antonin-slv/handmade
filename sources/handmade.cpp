@@ -1,21 +1,12 @@
+#include "handmade.h"
+
+
+#include "font8x8_basic.h"
 #include <stdint.h>
 #include <string>
 
-#include "font8x8_basic.h"
-/**
- * what I need to print stuff on the screen
- *
- */
 
-struct HandmadeScreenBuffer
-{
-    void *Memory;
-    int Width;
-    int Height;
-    int Pitch;
-    int BytesPerPixel;
-};
-
+// visual engine functions
 void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
 {
     uint8_t *row = (uint8_t *)buffer->Memory + y * buffer->Pitch + x * 4;
@@ -81,61 +72,6 @@ void RenderGradient(HandmadeScreenBuffer *Buffer, int XOffset, int YOffset)
     }
 }
 
-void renderCheckerboard(HandmadeScreenBuffer *Buffer, const int SquareSize, const int x_offset, const int y_offset, int red_square_x = 0, int red_square_y = 0)
-{
-
-    int squareXindex = 0;
-    int squareYindex = 0;
-    uint8_t *row = (uint8_t *)Buffer->Memory;
-    for (int Y = 0; Y < Buffer->Height; ++Y)
-    {
-        uint32_t *pixel = (uint32_t *)row;
-        for (int X = 0; X < Buffer->Width; ++X)
-        {
-            int checkerX = (X + x_offset);
-            if (checkerX < 0)
-                checkerX = (checkerX / SquareSize) - 1;
-            else
-                checkerX = checkerX / SquareSize;
-            int checkerY = (Y + y_offset);
-            if (checkerY < 0)
-                checkerY = (checkerY / SquareSize) - 1;
-            else
-                checkerY = checkerY / SquareSize;
-
-            if (checkerX == red_square_x && checkerY == red_square_y)
-            {
-                *pixel++ = 0x00FF0000; // Red
-                continue;
-            }
-            else if (checkerX == -1 && checkerY == -1)
-            {
-                *pixel++ = 0x0000FF00; // Green
-                continue;
-            }
-            else if (checkerX == -1 && checkerY == 0)
-            {
-                *pixel++ = 0x000000FF; // Blue
-                continue;
-            }
-            else if (checkerX == 0 && checkerY == -1)
-            {
-                *pixel++ = 0x00FFFF00; // Yellow
-                continue;
-            }
-            if ((checkerX + checkerY) % 2 == 0)
-            {
-                *pixel++ = 0x00FFFFFF; // White
-            }
-            else
-            {
-                *pixel++ = 0x00000000; // Black
-            }
-        }
-        row += Buffer->Pitch;
-    }
-}
-
 void renderArrayPattern(HandmadeScreenBuffer *Buffer,
                         int *array, int array_width, int array_height,
                         float cell_size = 0, int x_offset = 0, int y_offset = 0,
@@ -179,4 +115,60 @@ void renderArrayPattern(HandmadeScreenBuffer *Buffer,
         }
         row += Buffer->Pitch;
     }
+}
+
+
+//audio functions  - - - - - - - - - - -  
+
+void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCount, float &lastPhase)
+{
+    // mono audio :
+    //  for (int i = 0; i < frameCount; ++i)
+    //  {
+    //      float t = (float)soundOutput.SampleIndex++ / (float)soundOutput.SampleRate;
+    //      buffer[i] = soundOutput.Volume * sinf(3.14159265f * soundOutput.Frequency * t);
+    //  }
+    //  stereo audio :
+    int samampleCount = frameCount * soundOutput.channels;
+
+    //
+    float sinInnerFactor = (soundOutput.Frequency * 3.14159265f * 2.0f) / (float)soundOutput.SampleRate;
+    if (lastPhase != sinInnerFactor * (float)soundOutput.SampleIndex)
+    {
+        int phaseDiff = (int)((lastPhase - sinInnerFactor * (float)soundOutput.SampleIndex) / (sinInnerFactor));
+        soundOutput.SampleIndex += phaseDiff;
+    }
+
+    for (int i = 0; i < samampleCount; i += soundOutput.channels)
+    {
+        for (int ch = 0; ch < soundOutput.channels; ++ch)
+        {
+            buffer[i + ch] = soundOutput.Volume * sinf(sinInnerFactor * (float)soundOutput.SampleIndex); // different frequency per channel
+        }
+        soundOutput.SampleIndex++;
+    }
+
+    lastPhase = sinInnerFactor * (float)soundOutput.SampleIndex;
+}
+
+
+void HandmadeFillAudioBuffer(
+    void *audioBuffer,
+    HandmadeSoundOutput &soundOutput,
+    int frameCount) {
+
+    float *buffer = (float *)audioBuffer;
+    int sampleCount = frameCount * soundOutput.channels;
+
+   renderSineWave(buffer, soundOutput, frameCount, SinWaveLastPhase);
+}
+
+
+
+// generical game functions : 
+
+
+void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, int xOffset, int yOffset, float zoom_level)
+{
+    renderArrayPattern(Buffer, nullptr, 0, 0, 20.0f, xOffset, yOffset, zoom_level);
 }

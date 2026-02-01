@@ -12,7 +12,7 @@
 #include "win32_controller.cpp"
 
 #include "hand_keyboard.h"
-#include "hand_renderVisual.cpp"
+#include "handmade.cpp"
 
 struct Win32WindowDimension
 {
@@ -40,7 +40,7 @@ static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInf
 
   Buffer->Width = Width;
   Buffer->Height = Height;
-  Buffer->BytesPerPixel = 4;
+  int BytesPerPixel = 4;
 
   BufferInfo->bmiHeader.biSize = sizeof(BufferInfo->bmiHeader);
   BufferInfo->bmiHeader.biWidth = Buffer->Width;
@@ -48,9 +48,9 @@ static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInf
   BufferInfo->bmiHeader.biPlanes = 1;
   BufferInfo->bmiHeader.biBitCount = 32;
   BufferInfo->bmiHeader.biCompression = BI_RGB;
-  Buffer->Pitch = Buffer->Width * Buffer->BytesPerPixel;
+  Buffer->Pitch = Buffer->Width * BytesPerPixel;
 
-  int bitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
+  int bitMapMemorySize = (Buffer->Width * Buffer->Height) * BytesPerPixel;
   Buffer->Memory = VirtualAlloc(
       nullptr,
       bitMapMemorySize,
@@ -275,7 +275,6 @@ int WINAPI WinMain(
       SoundStat.Frequency = 440.0f;
       SoundStat.Volume = 0.5f;
       SoundStat.SampleIndex = 0;
-      SoundStat.WaveShape = WAVE_SHAPE_SINE;
 
       hasAudio = true;
     }

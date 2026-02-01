@@ -3,11 +3,13 @@
 
 #include <Audioclient.h>
 #include <Audiopolicy.h>
-
-#include "hand_audio_engine.cpp"
+#include <stdint.h>
+#include "handmade.h"
 
 static IAudioClient *pAudioClient;
 static uint32_t bufferFrameCount;
+
+#define REFTIMES_PER_SEC 10000000
 
 #define SAFE_RELEASE(punk) \
     if ((punk) != NULL)    \
