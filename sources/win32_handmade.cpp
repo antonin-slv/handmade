@@ -16,8 +16,6 @@
 #include "hand_keyboard.h"
 #include "handmade.cpp"
 
-
-
 static HandmadeScreenBuffer globalBackBuffer;
 static BITMAPINFO globalBackBufferInfo;
 // TODO : Temporary (has to get mor grannular control over what is included)
@@ -189,11 +187,11 @@ LRESULT mainWindowCallback(
     MouseState.onButtonAction(MouseButton_Middle, false);
     break;
   case WM_XBUTTONDOWN:
-    MouseState.onButtonAction((HIWORD(wParam) & XBUTTON1) ? MouseButton_X1 : MouseButton_X2, true);
-    break;
   case WM_XBUTTONUP:
-    MouseState.onButtonAction((HIWORD(wParam) & XBUTTON1) ? MouseButton_X1 : MouseButton_X2, false);
-    break;
+  {
+    MouseState.onButtonAction((HIWORD(wParam) & XBUTTON1) ? MouseButton_X1 : MouseButton_X2, Message == WM_XBUTTONDOWN);
+  }
+  break;
 
   default:
   {

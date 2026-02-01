@@ -1,7 +1,6 @@
 #ifndef HAND_KEYBOARD_H
 #define HAND_KEYBOARD_H
 
-
 #include <cstdint>
 
 enum standard_keys
@@ -36,11 +35,11 @@ struct keyboard_state
 
     button_state keys[256];
 
-    bool is_shift_down() const { return keys[Key_Shift].ended_down || keys[0xA0].ended_down || keys[0xA1].ended_down; }
+    bool is_shift_down() const { return keys[Key_Shift].ended_down; }
 
-    bool is_ctrl_down() const { return keys[Key_Ctrl].ended_down || keys[0xA2].ended_down || keys[0xA3].ended_down; }
+    bool is_ctrl_down() const { return keys[Key_Ctrl].ended_down ; }
 
-    bool is_alt_down() const { return keys[Key_Alt].ended_down || keys[0xA4].ended_down || keys[0xA5].ended_down; }
+    bool is_alt_down() const { return keys[Key_Alt].ended_down; }
     bool is_escape_down() const { return keys[Key_Escape].ended_down; }
 
     bool is_key_down(int vk_code) const { return keys[vk_code].ended_down; }
@@ -76,20 +75,27 @@ struct mouse_state
     int last_y = 0;
 
     int wheel_delta = 0;
+    union
+    {
+        button_state buttons[5];
+        struct
+        {
+            button_state left;
+            button_state right;
+            button_state middle;
+            button_state x1;
+            button_state x2;
+        };
+    };
 
-    button_state buttons[5];
-
-    bool is_button_down(uint8_t buttonIndex) const { return buttons[buttonIndex].ended_down; }
-
-    bool is_left_down() const { return is_button_down(MouseButton_Left); }
-
-    bool is_right_down() const { return is_button_down(MouseButton_Right); }
-
-    bool is_middle_down() const { return is_button_down(MouseButton_Middle); }
-    bool is_x1_down() const { return is_button_down(MouseButton_X1); }
-
-    bool is_x2_down() const { return is_button_down(MouseButton_X2); }
-
+    mouse_state()
+    {
+        for (int i = 0; i < 5; ++i)
+        {
+            buttons[i] = button_state();
+        }
+    }
+    
     void onButtonAction(uint8_t buttonIndex, bool isPressed)
     {
         button_state &button = buttons[buttonIndex];
@@ -109,8 +115,6 @@ struct mouse_state
         }
     }
 };
-
-
 
 struct unified_input
 {

@@ -1,6 +1,7 @@
 #ifndef WIN32_HANDMADE_H
 #define WIN32_HANDMADE_H
 
+
 struct Win32WindowDimension
 {
   int Width;
