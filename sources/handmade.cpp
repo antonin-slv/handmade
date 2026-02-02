@@ -1,8 +1,12 @@
 #include "handmade.h"
 
 #include "font8x8_basic.h"
+#include "Math/Shape3D.cpp"
+#include "Math/Point3D.h"
 #include <stdint.h>
 #include <string>
+
+static Shape3D cube_shape(8);
 
 // visual engine functions
 void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
@@ -118,15 +122,8 @@ void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
 
 // audio functions  - - - - - - - - - - -
 
-void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCount, float &lastPhase)
+void renderSineWave(HandmadeSoundOutput &soundOutput, int frameCount, float &lastPhase)
 {
-    // mono audio :
-    //  for (int i = 0; i < frameCount; ++i)
-    //  {
-    //      float t = (float)soundOutput.SampleIndex++ / (float)soundOutput.SampleRate;
-    //      buffer[i] = soundOutput.Volume * sinf(3.14159265f * soundOutput.Frequency * t);
-    //  }
-    //  stereo audio :
     int sampleCount = frameCount * soundOutput.channels;
     //
     float sinInnerFactor = (soundOutput.Frequency * 3.14159265f * 2.0f) / (float)soundOutput.SampleRate;
@@ -140,7 +137,7 @@ void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCo
     {
         for (int ch = 0; ch < soundOutput.channels; ++ch)
         {
-            buffer[i + ch] = soundOutput.Volume * sinf(sinInnerFactor * (soundOutput.SampleIndex + phaseDiff)); // different frequency per channel
+            soundOutput.Buffer[i + ch] = soundOutput.Volume * sinf(sinInnerFactor * (soundOutput.SampleIndex + phaseDiff)); // different frequency per channel
         }
         soundOutput.SampleIndex++;
     }
@@ -149,15 +146,13 @@ void renderSineWave(float *buffer, HandmadeSoundOutput &soundOutput, int frameCo
 }
 
 void HandmadeFillAudioBuffer(
-    void *audioBuffer,
     HandmadeSoundOutput &soundOutput,
     int frameCount)
 {
-
-    float *buffer = (float *)audioBuffer;
-    int sampleCount = frameCount * soundOutput.channels;
-
-    renderSineWave(buffer, soundOutput, frameCount, SinWaveLastPhase);
+    if (frameCount <= 0)
+        return;
+    soundOutput.framesWritten = frameCount;
+    renderSineWave(soundOutput, frameCount, SinWaveLastPhase);
 }
 
 void WriteMouseToArray(mouse_state &MouseState, HandmadeScreenBuffer *Buffer,
@@ -248,7 +243,7 @@ void WriteMouseToArray(mouse_state &MouseState, HandmadeScreenBuffer *Buffer,
                 }
             }
         }
-            
+
         */
     }
 }
@@ -271,14 +266,93 @@ void DrawMouseCircle(HandmadeScreenBuffer *Buffer, mouse_state &MouseState, int 
         int draw_y = MouseState.y + int(radius * sinf(angle));
         if (draw_x < 0 || draw_x >= Buffer->Width || draw_y < 0 || draw_y >= Buffer->Height)
             continue;
-        uint32_t *pixel =(uint32_t *) ((uint8_t *)Buffer->Memory + draw_y * Buffer->Pitch + draw_x * 4);
+        uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + draw_y * Buffer->Pitch + draw_x * 4);
         *pixel = 0x00A0F0F0; // light blue
     }
 }
 
+void DrawSoundBufferVisualization(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *soundOutput)
+{
+    // draw a simple sine wave visualization at the bottom of the screen
+    int centerY = Buffer->Height - 100;
+    int amplitude = 50;
+    int length = Buffer->Width;
+
+    // finds the resolution to use to draw the wave
+    // le facteur fait en sorte que
+    // x -> x+1 fait en sorte que
+    // amplitude * vol * sin(feq * x * facteur)
+    //              soit à 1 pile de diff avec :
+    // amplitude * vol * sin(feq * (x + 1) * facteur)
+    // ainsi quand on avance de 1 unité de temps on monte ou descend d'au plus un pixel
+    // or le sinus est à 45 deg en 0, donc fort éloignement entre 2 pixels
+    // super aproximation : quand sin -> 0 alors sin == identité
+
+    /*
+    float factor = 400 / (soundOutput->Volume * amplitude * soundOutput->Frequency);
+
+    for (float x = 0; x < length; x += factor)
+    {
+        float t = (float)x / (float)length;
+        // ça consomme  --- ENORMEMENT DE CPU --- mais c'est pour l'exemple
+        float sample = soundOutput->Volume * sinf(soundOutput->Frequency * t * 3.14159265f);
+        int y = centerY + (int)(sample * amplitude);
+        if (y >= 0 && y < Buffer->Height)
+        {
+            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + y * Buffer->Pitch + (int)x * 4);
+            *pixel = 0x00FF00FF; // magenta
+        }
+    }
+    */
+
+    // we iterate through the sound buffer instead
+    int samplesToDraw = soundOutput->framesWritten * soundOutput->channels;
+    for (int i = 0; i < samplesToDraw; i += soundOutput->channels)
+    {
+        float sample = soundOutput->Buffer[i]; // we take only the first channel for visualization
+        int x = (i / soundOutput->channels) % length;
+        int y = centerY + (int)(sample * amplitude);
+        if (y >= 0 && y < Buffer->Height)
+        {
+            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + y * Buffer->Pitch + x * 4);
+            *pixel = 0x00FF00FF; // magenta
+        }
+    }
+}
+
+void RenderCube(HandmadeScreenBuffer *Buffer, Shape3D &cube)
+{   
+    
+    Point3D screenCenter = {};
+    screenCenter.x = Buffer->Width/2;
+    screenCenter.y = Buffer->Height/2;
+
+    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
+
+    Shape3D centeredCube = Shape3D(cube);
+    //translate cube into screen coordinates
+    centeredCube.translate(screenCenter);
+
+    for (int i = 0; i < cube.vertex_count; i++) {
+        Point3D screenPoint = cube.vertices[i].BasicProjection();
+        //now x and y are "clamped" between -1 and 1
+        screenPoint.x *= quarter_size; // scale to screen space
+        screenPoint.y *= quarter_size;
+        //point on screen as if it was centered at 0,0
+        screenPoint += screenCenter;
+        if (screenPoint.x >= 0 && screenPoint.x < Buffer->Width &&
+            screenPoint.y >= 0 && screenPoint.y < Buffer->Height) {
+            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + (int)screenPoint.y * Buffer->Pitch + (int)screenPoint.x * 4);
+            *pixel = 0x00FFFF00; // yellow
+        }
+    }
+}
+
+
 // generical game functions :
 
-void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputState, float deltaT)
+void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *SoundStat,
+                             unified_input InputState, float deltaT, int queriedAudioFrames)
 {
     static int xOffset = 0;
     static int yOffset = 0;
@@ -317,11 +391,11 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputSt
         xOffset -= (MouseState.x - MouseState.last_x);
         yOffset -= (MouseState.y - MouseState.last_y);
 
-        SoundStat.Frequency += (float)(MouseState.x - MouseState.last_x) * 100.0f * deltaT;
-        if (SoundStat.Frequency < 20.0f)
-            SoundStat.Frequency = 20.0f;
-        else if (SoundStat.Frequency > 20000.0f)
-            SoundStat.Frequency = 20000.0f;
+        SoundStat->Frequency += (float)(MouseState.x - MouseState.last_x) * 100.0f * deltaT;
+        if (SoundStat->Frequency < 20.0f)
+            SoundStat->Frequency = 20.0f;
+        else if (SoundStat->Frequency > 20000.0f)
+            SoundStat->Frequency = 20000.0f;
     }
     InputState.Keyboard.keys[Key_Ctrl].ended_down = false;
     InputState.Keyboard.keys[Key_Ctrl].half_transition_count = 0;
@@ -334,7 +408,7 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputSt
     renderString(Buffer, fps_buffer, 10, 10);
 
     char sound_buffer[256];
-    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat.Frequency);
+    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat->Frequency);
     renderString(Buffer, sound_buffer, 10, 30);
 
     char keyPressBuffer[256] = {};
@@ -345,6 +419,13 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputSt
     renderString(Buffer, keyPressBuffer, 10, 50);
 
     DrawMouseCircle(Buffer, MouseState, 10);
+
+    HandmadeFillAudioBuffer(*SoundStat, queriedAudioFrames);
+
+    DrawSoundBufferVisualization(Buffer, SoundStat);
+    cube_shape.rotate_degree(Point3D{.5f, 1.0f, 0.0f}, 10.0f * deltaT); // rotate 15 degrees per second around Y axis
+    cube_shape.translate(Point3D{0.0f, 0.0f, 50.0f * deltaT}); 
+    RenderCube(Buffer, cube_shape);
 }
 
 void HandmadeInitialize()
@@ -364,12 +445,17 @@ void HandmadeInitialize()
             test_array.Array[y * test_array.Width + x] = (red << 16) | (green << 8) | blue;
         }
     }
-}
 
-void HandmadeInitializeAudio(int SampleRate)
-{
-    SoundStat.SampleRate = SampleRate;
-    SoundStat.Frequency = 440.0f;
-    SoundStat.Volume = 0.5f;
-    SoundStat.SampleIndex = 0;
+    cube_shape.addVertex(Point3D{-1.0f, -1.0f, -1.0f});
+    cube_shape.addVertex(Point3D{1.0f, -1.0f, -1.0f});
+    cube_shape.addVertex(Point3D{1.0f, 1.0f, -1.0f});
+    cube_shape.addVertex(Point3D{-1.0f, 1.0f, -1.0f});
+    cube_shape.addVertex(Point3D{-1.0f, -1.0f, 1.0f});
+    cube_shape.addVertex(Point3D{1.0f, -1.0f, 1.0f});
+    cube_shape.addVertex(Point3D{1.0f, 1.0f, 1.0f});
+    cube_shape.addVertex(Point3D{-1.0f, 1.0f, 1.0f});
+
+    cube_shape.center = Point3D{0.0f, 0.0f, 0.0f};
+    cube_shape.scale(120.0f); // scale to 100 units
+    cube_shape.translate(Point3D{0.0f, 0.0f,200}); // move away from camera
 }

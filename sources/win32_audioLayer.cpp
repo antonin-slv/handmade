@@ -139,7 +139,12 @@ void Win32FillAudioBuffer(
             if (SUCCEEDED(hr))
             {
 
-                HandmadeFillAudioBuffer((void *)pAudioData, soundOutput, availableFrameCount);
+                HandmadeFillAudioBuffer( soundOutput, availableFrameCount);
+
+                for (int i = 0; i < availableFrameCount * soundOutput.channels; ++i)
+                {
+                    ((float *)pAudioData)[i] = soundOutput.Buffer[i];
+                }
 
                 hr = renderClient->ReleaseBuffer(availableFrameCount, audioFlags);
                 if (FAILED(hr))
@@ -199,46 +204,39 @@ HRESULT win32GetFramesToFill(
     return hr;
 }
 
-void win32FillMinimumAudioBuffer(
+void win32FillAudioBuffer(
     IAudioClient &audioClient,
     IAudioRenderClient *renderClient,
     DWORD &audioFlags,
-    HandmadeSoundOutput &soundOutput,
-    float lastFrameDuration)
+    HandmadeSoundOutput &soundOutput)
 {
     BYTE *pAudioData;
 
-    UINT32 framesToWrite = 0;
-    HRESULT hr = win32GetFramesToFill(
-        audioClient,
-        framesToWrite,
-        soundOutput.SampleRate,
-        lastFrameDuration);
-
-    if (SUCCEEDED(hr))
+    if (soundOutput.framesWritten > 0)
     {
-        if (framesToWrite > 0)
-        {
-            hr = renderClient->GetBuffer(framesToWrite, &pAudioData);
-            if (SUCCEEDED(hr))
+        HRESULT hr = renderClient->GetBuffer(soundOutput.framesWritten, &pAudioData);
+        if (SUCCEEDED(hr))
+        {   
+            //copies the audio data already generated
+            int sampleCount = soundOutput.framesWritten * soundOutput.channels;
+
+            for (int i = 0; i < sampleCount; ++i)
             {
-
-                HandmadeFillAudioBuffer((void *)pAudioData, soundOutput, framesToWrite);
-
-                hr = renderClient->ReleaseBuffer(framesToWrite, audioFlags);
-                if (FAILED(hr))
-                {
-                    OutputDebugStringA("Failed to release audio buffer.\n");
-                }
+                ((float *)pAudioData)[i] = soundOutput.Buffer[i];
             }
-            else
+
+
+            hr = renderClient->ReleaseBuffer(soundOutput.framesWritten, audioFlags);
+            soundOutput.framesWritten = 0;
+
+            if (FAILED(hr))
             {
-                OutputDebugStringA("Failed to get audio buffer.\n");
+                OutputDebugStringA("Failed to release audio buffer.\n");
             }
         }
-    }
-    else
-    {
-        OutputDebugStringA("Failed to get current padding.\n");
+        else
+        {
+            OutputDebugStringA("Failed to get audio buffer.\n");
+        }
     }
 }

@@ -259,14 +259,20 @@ int WINAPI WinMain(
   int wavetime = 0;
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-
+  HandmadeSoundOutput SoundStat = {};
   if (SUCCEEDED(hr))
   {
     hr = win32_GetAudioRenderClient(&pRenderAudioClient, &pwfx);
 
     if (SUCCEEDED(hr))
     {
-      HandmadeInitializeAudio(pwfx->nSamplesPerSec);
+      SoundStat.SampleRate = pwfx->nSamplesPerSec;
+      SoundStat.channels = pwfx->nChannels;
+      SoundStat.Frequency = 440.0f;
+      SoundStat.Volume = 0.5f;
+      SoundStat.SampleIndex = 0;
+      SoundStat.Buffer = (float *)malloc(pwfx->nSamplesPerSec * sizeof(float) * SoundStat.channels); // 1 second buffer
+    
       hasAudio = true;
     }
     Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
@@ -322,10 +328,14 @@ int WINAPI WinMain(
         // TODO :  this case will have to be handled in the future
       }
     }
+    UINT32 framesToFill1 = 512;
+    //gets the number of frames to put in the buffer to maintain low latency
+    win32GetFramesToFill(*pAudioClient, (UINT32 &)framesToFill1, SoundStat.SampleRate, deltaT);
+    uint32_t framesToFill = framesToFill1;
 
     HDC DeviceContext = GetDC(window);
 
-    HandmadeUpdateAndRender(&globalBackBuffer, InputState, deltaT);
+    HandmadeUpdateAndRender(&globalBackBuffer, &SoundStat, InputState, deltaT, framesToFill);
 
     Win32WindowDimension Dimension = Win32GetWindowDimension(window);
 
@@ -334,9 +344,7 @@ int WINAPI WinMain(
     // continue audio streaming
     if (hasAudio)
     {
-      // TODO : rajouter une gestion de la latence audio ici...
-      // actuellement 1 seconde, mais on veut quelque chose de réactif
-      win32FillMinimumAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat, deltaT);
+      win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
     }
 
     // clears mouse movement delta

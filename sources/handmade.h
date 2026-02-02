@@ -15,6 +15,8 @@ struct HandmadeScreenBuffer
 
 struct HandmadeSoundOutput
 {
+    float *Buffer;
+
     float Volume = 1.0f; // entre 0.0f et 1.0f
 
     int SampleRate;  // in Hz
@@ -22,6 +24,8 @@ struct HandmadeSoundOutput
 
     int SampleIndex = 0;
     int channels = 2;
+
+    int framesWritten = 0;
 };
 
 struct RenderingArray
@@ -34,8 +38,6 @@ struct RenderingArray
 
 static float SinWaveLastPhase = 0.0f;
 
-static HandmadeSoundOutput SoundStat = {};
-
 // temp array
 static RenderingArray test_array;
 /*
@@ -43,7 +45,6 @@ static RenderingArray test_array;
     -> should be called regularly to keep the audio buffer filled I guess
 */
 void HandmadeFillAudioBuffer(
-    void *audioBuffer,
     HandmadeSoundOutput &soundOutput,
     int frameCount);
 
@@ -53,10 +54,8 @@ void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
 void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y);
 
 // in the end the only function ?
-static void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, unified_input InputState, float deltaT = 0.0f);
+static void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *SoundOutput, unified_input InputState, float deltaT, int queriedAudioFrames = 512);
 
 static void HandmadeInitialize();
-
-static void HandmadeInitializeAudio(int SampleRate = 48000);
 
 #endif // HANDMADE_H
