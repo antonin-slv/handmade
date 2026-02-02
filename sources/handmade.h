@@ -5,6 +5,14 @@
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+/** to be called on HandmadeScreenBuffer */
+#define colorPixel(Buffer, x, y, color)                                                                \
+    if ((x) >= 0 && (x) < (Buffer)->Width && (y) >= 0 && (y) < (Buffer)->Height)                       \
+    {                                                                                                  \
+        uint32_t *pixel = (uint32_t *)((uint8_t *)(Buffer)->Memory + (y) * (Buffer)->Pitch + (x) * 4); \
+        *pixel = (color);                                                                              \
+    }
+
 struct HandmadeScreenBuffer
 {
     void *Memory;

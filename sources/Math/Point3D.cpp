@@ -89,5 +89,5 @@ static Point3D crossProduct(const Point3D &a, const Point3D &b)
 
 Point3D Point3D::BasicProjection() const {
     float logic_z = (this->z <=  0.001f) ? 0.001f : this->z;
-    return {this->x / logic_z, this->y / logic_z, 0};
+    return {this->x / logic_z, this->y / logic_z, this->z};
 }

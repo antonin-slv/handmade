@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string>
 
-static Shape3D cube_shape(8);
+static WireFrame3D cube_shape = {};
 
 // visual engine functions
 void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
@@ -264,10 +264,7 @@ void DrawMouseCircle(HandmadeScreenBuffer *Buffer, mouse_state &MouseState, int 
         float angle = i / (float)radius;
         int draw_x = MouseState.x + int(radius * cosf(angle));
         int draw_y = MouseState.y + int(radius * sinf(angle));
-        if (draw_x < 0 || draw_x >= Buffer->Width || draw_y < 0 || draw_y >= Buffer->Height)
-            continue;
-        uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + draw_y * Buffer->Pitch + draw_x * 4);
-        *pixel = 0x00A0F0F0; // light blue
+        colorPixel(Buffer, draw_x, draw_y, 0x00A0F0F0)
     }
 }
 
@@ -312,42 +309,116 @@ void DrawSoundBufferVisualization(HandmadeScreenBuffer *Buffer, HandmadeSoundOut
         float sample = soundOutput->Buffer[i]; // we take only the first channel for visualization
         int x = (i / soundOutput->channels) % length;
         int y = centerY + (int)(sample * amplitude);
-        if (y >= 0 && y < Buffer->Height)
-        {
-            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + y * Buffer->Pitch + x * 4);
-            *pixel = 0x00FF00FF; // magenta
-        }
+        colorPixel(Buffer, x, y, 0x00FF00FF)
     }
 }
 
-void RenderCube(HandmadeScreenBuffer *Buffer, Shape3D &cube)
-{   
-    
+void RenderCube(HandmadeScreenBuffer *Buffer, PointCloud &cube)
+{
+
     Point3D screenCenter = {};
-    screenCenter.x = Buffer->Width/2;
-    screenCenter.y = Buffer->Height/2;
+    screenCenter.x = Buffer->Width / 2;
+    screenCenter.y = Buffer->Height / 2;
 
     float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
 
-    Shape3D centeredCube = Shape3D(cube);
-    //translate cube into screen coordinates
-    centeredCube.translate(screenCenter);
-
-    for (int i = 0; i < cube.vertex_count; i++) {
-        Point3D screenPoint = cube.vertices[i].BasicProjection();
-        //now x and y are "clamped" between -1 and 1
+    for (int i = 0; i < cube.vertex_count; i++)
+    {
+        Point3D screenPoint = (cube.vertices[i] + cube.center).BasicProjection();
+        // now x and y are "clamped" between -1 and 1
         screenPoint.x *= quarter_size; // scale to screen space
         screenPoint.y *= quarter_size;
-        //point on screen as if it was centered at 0,0
+        // point on screen as if it was centered at 0,0
         screenPoint += screenCenter;
-        if (screenPoint.x >= 0 && screenPoint.x < Buffer->Width &&
-            screenPoint.y >= 0 && screenPoint.y < Buffer->Height) {
-            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + (int)screenPoint.y * Buffer->Pitch + (int)screenPoint.x * 4);
-            *pixel = 0x00FFFF00; // yellow
-        }
+        colorPixel(Buffer, (int)screenPoint.x, (int)screenPoint.y, 0x00FFFF00)
     }
 }
 
+void RenderCubeSides(HandmadeScreenBuffer *Buffer, WireFrame3D &cube)
+{
+    // TODO : draw edges instead of vertices
+    Point3D screenCenter = {};
+    screenCenter.x = Buffer->Width / 2;
+    screenCenter.y = Buffer->Height / 2;
+
+    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
+
+    Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * cube.vertex_count);
+    // copies the points, while sending them in screenspace.
+    for (int i = 0; i < cube.vertex_count; i++)
+    {
+        vertices[i] = (cube.vertices[i] + cube.center).BasicProjection();
+        vertices[i].x *= quarter_size; // scale to screen space
+        vertices[i].y *= quarter_size;
+        vertices[i] += screenCenter;
+    }
+
+
+    for (int i = 0; i < cube.edge_count; i++)
+    {
+        std::pair<uint16_t, uint16_t> Edge = cube.edges[i];
+
+        Point3D p1 = vertices[Edge.first];
+        Point3D p2 = vertices[Edge.second];
+
+        int x0 = (int)p1.x;
+        int y0 = (int)p1.y;
+        int x1 = (int)p2.x;
+        int y1 = (int)p2.y;
+
+        int dx = abs(x1 - x0);
+        int dy = -abs(y1 - y0);
+        int sx = (x0 < x1) ? 1 : -1;
+        int sy = (y0 < y1) ? 1 : -1;
+        int err = dx + dy;
+        int e2;
+
+        float alpha = 0;    
+        float alpha_factor = 1.0f / (float)(dx + abs(dy) + 1);
+        while (true)
+        {
+            alpha += alpha_factor;
+            if (alpha > 1.0f) {
+                alpha = 1.0f;
+            } else if (alpha < 0.0f) {
+                alpha = 0.0f;
+            }
+
+            float sample_z = p1.z * (1.0f - alpha) + p2.z * alpha;
+
+            float color_intensity = (1.1f - (sample_z / 750.0f));
+            if (color_intensity < 0.0f) {
+                color_intensity = 0.0f;
+            } else if (color_intensity > 1.0f) {
+                color_intensity = 1.0f;
+            }
+
+            uint8_t red = (uint8_t)((1.0f - color_intensity) * 0xFF);
+            uint8_t green = (uint8_t)(color_intensity * 0xFF);
+            uint8_t blue = 0xA0;
+            uint32_t color = (red << 16) | (green << 8) | blue;
+
+            colorPixel(Buffer, x0, y0, color);
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+            e2 = 2 * err;
+            if (e2 >= dy)
+            {
+                err += dy;
+                x0 += sx;
+            }
+            if (e2 <= dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    delete[] vertices;
+}
 
 // generical game functions :
 
@@ -423,9 +494,11 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
     HandmadeFillAudioBuffer(*SoundStat, queriedAudioFrames);
 
     DrawSoundBufferVisualization(Buffer, SoundStat);
-    cube_shape.rotate_degree(Point3D{.5f, 1.0f, 0.0f}, 10.0f * deltaT); // rotate 15 degrees per second around Y axis
-    cube_shape.translate(Point3D{0.0f, 0.0f, 50.0f * deltaT}); 
-    RenderCube(Buffer, cube_shape);
+    cube_shape.rotate_degree(Point3D{.5f, 1.0f, 0.0f}, 50.0f * deltaT); // rotate 15 degrees per second around Y axis
+    cube_shape.translate(Point3D{0.0f, 0.0f, 5.0f * deltaT});
+    // RenderCube(Buffer, cube_shape);
+
+    RenderCubeSides(Buffer, cube_shape);
 }
 
 void HandmadeInitialize()
@@ -446,16 +519,8 @@ void HandmadeInitialize()
         }
     }
 
-    cube_shape.addVertex(Point3D{-1.0f, -1.0f, -1.0f});
-    cube_shape.addVertex(Point3D{1.0f, -1.0f, -1.0f});
-    cube_shape.addVertex(Point3D{1.0f, 1.0f, -1.0f});
-    cube_shape.addVertex(Point3D{-1.0f, 1.0f, -1.0f});
-    cube_shape.addVertex(Point3D{-1.0f, -1.0f, 1.0f});
-    cube_shape.addVertex(Point3D{1.0f, -1.0f, 1.0f});
-    cube_shape.addVertex(Point3D{1.0f, 1.0f, 1.0f});
-    cube_shape.addVertex(Point3D{-1.0f, 1.0f, 1.0f});
-
-    cube_shape.center = Point3D{0.0f, 0.0f, 0.0f};
-    cube_shape.scale(120.0f); // scale to 100 units
-    cube_shape.translate(Point3D{0.0f, 0.0f,200}); // move away from camera
+    cube_shape = GetSimpleCube();
+    
+    cube_shape.scale(120.0f);                       // make the cube bigger
+    cube_shape.translate(Point3D{0.0f, 0.0f, 200}); // move away from camera
 }
