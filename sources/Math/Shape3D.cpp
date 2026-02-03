@@ -101,3 +101,45 @@ WireFrame3D GetSimpleCube() {
 
     return cube_shape;
 }
+
+
+Mesh3D GetCubeMesh() {
+    Mesh3D cube_mesh = {};
+
+    cube_mesh.max_vertices = 8;
+    cube_mesh.vertices = new Point3D[cube_mesh.max_vertices];
+
+    cube_mesh.addVertex(Point3D{-1.0f, -1.0f, -1.0f});//0
+    cube_mesh.addVertex(Point3D{1.0f, -1.0f, -1.0f});//1
+    cube_mesh.addVertex(Point3D{1.0f, 1.0f, -1.0f});//2
+    cube_mesh.addVertex(Point3D{-1.0f, 1.0f, -1.0f});//3
+    cube_mesh.addVertex(Point3D{-1.0f, -1.0f, 1.0f});//4
+    cube_mesh.addVertex(Point3D{1.0f, -1.0f, 1.0f});//5
+    cube_mesh.addVertex(Point3D{1.0f, 1.0f, 1.0f});//6
+    cube_mesh.addVertex(Point3D{-1.0f, 1.0f, 1.0f});//7
+
+    cube_mesh.center = Point3D{0.0f, 0.0f, 0.0f};
+
+    cube_mesh.max_faces = 12; // 2 triangles per face * 6 faces
+    cube_mesh.faces = new Face[cube_mesh.max_faces];
+
+    // front face
+    cube_mesh.addFace(0, 1, 2, 0xFF0000); // red
+    cube_mesh.addFace(0, 2, 3, 0xFF0000); // red
+    // back face
+    cube_mesh.addFace(4, 6, 5, 0x00FF00); // green
+    cube_mesh.addFace(4, 7, 6, 0x00FF00); // green
+    // left face
+    cube_mesh.addFace(4, 5, 1, 0x0000FF); // blue
+    cube_mesh.addFace(4, 1, 0, 0x0000FF); // blue
+    // right face
+    cube_mesh.addFace(3, 2, 6, 0xFFFF00); // yellow
+    cube_mesh.addFace(3, 6, 7, 0xFFFF00); // yellow
+    // top face
+    cube_mesh.addFace(1, 5, 6, 0xFF00FF); // magenta
+    cube_mesh.addFace(1, 6, 2, 0xFF00FF); // magenta
+    // bottom face
+    cube_mesh.addFace(4, 0, 3, 0x00FFFF); // cyan
+    cube_mesh.addFace(4, 3, 7, 0x00FFFF); // cyan
+    return cube_mesh;
+}

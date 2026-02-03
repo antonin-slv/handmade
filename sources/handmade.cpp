@@ -1,5 +1,7 @@
 #include "handmade.h"
 
+#include "Engine/visual_func.cpp"
+
 #include "font8x8_basic.h"
 #include "Math/Shape3D.cpp"
 #include "Math/Point3D.h"
@@ -7,118 +9,7 @@
 #include <string>
 
 static WireFrame3D cube_shape = {};
-
-// visual engine functions
-void renderCharacter(HandmadeScreenBuffer *buffer, char character, int x, int y)
-{
-    uint8_t *row = (uint8_t *)buffer->Memory + y * buffer->Pitch + x * 4;
-    for (int glyph_y = 0; glyph_y < 8; ++glyph_y)
-    {
-        uint8_t glyph_row = font8x8_basic[(uint8_t)character][glyph_y];
-        uint32_t *pixel = (uint32_t *)row;
-        for (int glyph_x = 0; glyph_x < 8; ++glyph_x)
-        {
-            uint8_t mask = 1 << glyph_x;
-            if (glyph_row & mask)
-            {
-                *pixel++ = (uint32_t)(0x00FFFFFF); // White
-            }
-            else
-            {
-                *pixel++ = (uint32_t)(0x00000000); // Black
-            }
-        }
-        row += buffer->Pitch;
-    }
-}
-
-void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y)
-{
-    int cursor_x = x;
-    for (char c : str)
-    {
-        renderCharacter(buffer, c, cursor_x, y);
-        cursor_x += 8; // Advance cursor by character width
-        if (cursor_x + 8 > buffer->Width)
-        {
-            break; // Stop rendering if we exceed buffer width
-        }
-    }
-}
-
-void RenderGradient(HandmadeScreenBuffer *Buffer, int XOffset, int YOffset)
-{
-
-    int small_white_square_width = 1;
-    int small_white_square_height = 50;
-    int centerX = Buffer->Width / 2;
-    int centerY = Buffer->Height / 2;
-    uint8_t *row = (uint8_t *)Buffer->Memory;
-    for (int Y = 0; Y < Buffer->Height; ++Y)
-    {
-        uint32_t *pixel = (uint32_t *)row;
-        for (int X = 0; X < Buffer->Width; ++X)
-        {
-
-            if ((X - centerX + XOffset) >= 0 && (X - centerX + XOffset) < small_white_square_width &&
-                (Y - centerY + YOffset) >= 0 && (Y - centerY + YOffset) < small_white_square_height)
-            {
-                *pixel++ = 0x00FFFFFF;
-            }
-            else
-            {
-                uint8_t blue = (X + XOffset) % 256;
-                uint8_t green = (Y + YOffset) % 256;
-                uint8_t red = 0;
-                *pixel++ = ((red << 16) | (green << 8) | blue);
-            }
-        }
-        row += Buffer->Pitch;
-    }
-}
-
-void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
-                        int x_offset = 0, int y_offset = 0, float zoom_level = 1.0f)
-{
-
-    float StepX, StepY;
-    if (array.CellSize > 0)
-    {
-        StepX = 1 / ((float)array.CellSize * zoom_level);
-        StepY = 1 / ((float)array.CellSize * zoom_level);
-    }
-    else
-    {
-        StepX = (float)(array.Width) / ((float)Buffer->Width * zoom_level);
-        StepY = (float)(array.Height) / ((float)Buffer->Height * zoom_level);
-    }
-
-    uint8_t *row = (uint8_t *)Buffer->Memory;
-
-    for (int Y = 0; Y < Buffer->Height; ++Y)
-    {
-        uint32_t *pixel = (uint32_t *)row;
-
-        float current_y = (Y + y_offset) * StepY;
-        int array_index_y = (int)current_y;
-        for (int X = 0; X < Buffer->Width; ++X)
-        {
-            float current_x = (X + x_offset) * StepX;
-            int array_index_x = (int)current_x;
-
-            if (array_index_x >= array.Width || array_index_x < 0 || array_index_y >= array.Height || array_index_y < 0)
-            {
-                // out of bounds
-                *pixel++ = 0x000F0F0F; // very mid gray
-            }
-            else
-            {
-                *pixel++ = array.Array[array_index_y * array.Width + array_index_x];
-            }
-        }
-        row += Buffer->Pitch;
-    }
-}
+static Mesh3D cube_mesh = {};
 
 // audio functions  - - - - - - - - - - -
 
@@ -264,7 +155,7 @@ void DrawMouseCircle(HandmadeScreenBuffer *Buffer, mouse_state &MouseState, int 
         float angle = i / (float)radius;
         int draw_x = MouseState.x + int(radius * cosf(angle));
         int draw_y = MouseState.y + int(radius * sinf(angle));
-        colorPixel(Buffer, draw_x, draw_y, 0x00A0F0F0)
+        SAFE_COLOR_PIXEL(Buffer, draw_x, draw_y, 0x00A0F0F0)
     }
 }
 
@@ -275,33 +166,6 @@ void DrawSoundBufferVisualization(HandmadeScreenBuffer *Buffer, HandmadeSoundOut
     int amplitude = 50;
     int length = Buffer->Width;
 
-    // finds the resolution to use to draw the wave
-    // le facteur fait en sorte que
-    // x -> x+1 fait en sorte que
-    // amplitude * vol * sin(feq * x * facteur)
-    //              soit à 1 pile de diff avec :
-    // amplitude * vol * sin(feq * (x + 1) * facteur)
-    // ainsi quand on avance de 1 unité de temps on monte ou descend d'au plus un pixel
-    // or le sinus est à 45 deg en 0, donc fort éloignement entre 2 pixels
-    // super aproximation : quand sin -> 0 alors sin == identité
-
-    /*
-    float factor = 400 / (soundOutput->Volume * amplitude * soundOutput->Frequency);
-
-    for (float x = 0; x < length; x += factor)
-    {
-        float t = (float)x / (float)length;
-        // ça consomme  --- ENORMEMENT DE CPU --- mais c'est pour l'exemple
-        float sample = soundOutput->Volume * sinf(soundOutput->Frequency * t * 3.14159265f);
-        int y = centerY + (int)(sample * amplitude);
-        if (y >= 0 && y < Buffer->Height)
-        {
-            uint32_t *pixel = (uint32_t *)((uint8_t *)Buffer->Memory + y * Buffer->Pitch + (int)x * 4);
-            *pixel = 0x00FF00FF; // magenta
-        }
-    }
-    */
-
     // we iterate through the sound buffer instead
     int samplesToDraw = soundOutput->framesWritten * soundOutput->channels;
     for (int i = 0; i < samplesToDraw; i += soundOutput->channels)
@@ -309,115 +173,8 @@ void DrawSoundBufferVisualization(HandmadeScreenBuffer *Buffer, HandmadeSoundOut
         float sample = soundOutput->Buffer[i]; // we take only the first channel for visualization
         int x = (i / soundOutput->channels) % length;
         int y = centerY + (int)(sample * amplitude);
-        colorPixel(Buffer, x, y, 0x00FF00FF)
+        SAFE_COLOR_PIXEL(Buffer, x, y, 0x00FF00FF)
     }
-}
-
-void RenderCube(HandmadeScreenBuffer *Buffer, PointCloud &cube)
-{
-
-    Point3D screenCenter = {};
-    screenCenter.x = Buffer->Width / 2;
-    screenCenter.y = Buffer->Height / 2;
-
-    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
-
-    for (int i = 0; i < cube.vertex_count; i++)
-    {
-        Point3D screenPoint = (cube.vertices[i] + cube.center).BasicProjection();
-        // now x and y are "clamped" between -1 and 1
-        screenPoint.x *= quarter_size; // scale to screen space
-        screenPoint.y *= quarter_size;
-        // point on screen as if it was centered at 0,0
-        screenPoint += screenCenter;
-        colorPixel(Buffer, (int)screenPoint.x, (int)screenPoint.y, 0x00FFFF00)
-    }
-}
-
-void RenderCubeSides(HandmadeScreenBuffer *Buffer, WireFrame3D &cube)
-{
-    // TODO : draw edges instead of vertices
-    Point3D screenCenter = {};
-    screenCenter.x = Buffer->Width / 2;
-    screenCenter.y = Buffer->Height / 2;
-
-    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
-
-    Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * cube.vertex_count);
-    // copies the points, while sending them in screenspace.
-    for (int i = 0; i < cube.vertex_count; i++)
-    {
-        vertices[i] = (cube.vertices[i] + cube.center).BasicProjection();
-        vertices[i].x *= quarter_size; // scale to screen space
-        vertices[i].y *= quarter_size;
-        vertices[i] += screenCenter;
-    }
-
-
-    for (int i = 0; i < cube.edge_count; i++)
-    {
-        std::pair<uint16_t, uint16_t> Edge = cube.edges[i];
-
-        Point3D p1 = vertices[Edge.first];
-        Point3D p2 = vertices[Edge.second];
-
-        int x0 = (int)p1.x;
-        int y0 = (int)p1.y;
-        int x1 = (int)p2.x;
-        int y1 = (int)p2.y;
-
-        int dx = abs(x1 - x0);
-        int dy = -abs(y1 - y0);
-        int sx = (x0 < x1) ? 1 : -1;
-        int sy = (y0 < y1) ? 1 : -1;
-        int err = dx + dy;
-        int e2;
-
-        float alpha = 0;    
-        float alpha_factor = 1.0f / (float)(dx + abs(dy) + 1);
-        while (true)
-        {
-            alpha += alpha_factor;
-            if (alpha > 1.0f) {
-                alpha = 1.0f;
-            } else if (alpha < 0.0f) {
-                alpha = 0.0f;
-            }
-
-            float sample_z = p1.z * (1.0f - alpha) + p2.z * alpha;
-
-            float color_intensity = (1.1f - (sample_z / 750.0f));
-            if (color_intensity < 0.0f) {
-                color_intensity = 0.0f;
-            } else if (color_intensity > 1.0f) {
-                color_intensity = 1.0f;
-            }
-
-            uint8_t red = (uint8_t)((1.0f - color_intensity) * 0xFF);
-            uint8_t green = (uint8_t)(color_intensity * 0xFF);
-            uint8_t blue = 0xA0;
-            uint32_t color = (red << 16) | (green << 8) | blue;
-
-            colorPixel(Buffer, x0, y0, color);
-            if (x0 == x1 && y0 == y1)
-            {
-                break;
-            }
-            e2 = 2 * err;
-            if (e2 >= dy)
-            {
-                err += dy;
-                x0 += sx;
-            }
-            if (e2 <= dx)
-            {
-                err += dx;
-                y0 += sy;
-            }
-        }
-    }
-
-    delete[] vertices;
 }
 
 // generical game functions :
@@ -425,6 +182,12 @@ void RenderCubeSides(HandmadeScreenBuffer *Buffer, WireFrame3D &cube)
 void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *SoundStat,
                              unified_input InputState, float deltaT, int queriedAudioFrames)
 {
+
+    for (int i = 0; i < Buffer->Width * Buffer->Height; ++i)
+    {
+        depth_buffer[i] = FLT_MAX;
+    }
+
     static int xOffset = 0;
     static int yOffset = 0;
     static float zoom_level = 1.0f;
@@ -481,7 +244,6 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
     char sound_buffer[256];
     sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat->Frequency);
     renderString(Buffer, sound_buffer, 10, 30);
-
     char keyPressBuffer[256] = {};
     for (int i = 0; i < 256; ++i)
     {
@@ -494,11 +256,15 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
     HandmadeFillAudioBuffer(*SoundStat, queriedAudioFrames);
 
     DrawSoundBufferVisualization(Buffer, SoundStat);
+
     cube_shape.rotate_degree(Point3D{.5f, 1.0f, 0.0f}, 50.0f * deltaT); // rotate 15 degrees per second around Y axis
     cube_shape.translate(Point3D{0.0f, 0.0f, 5.0f * deltaT});
     // RenderCube(Buffer, cube_shape);
-
     RenderCubeSides(Buffer, cube_shape);
+
+    cube_mesh.rotate_degree(Point3D{1.0f, 0.5f, 0.0f}, 30.0f * deltaT); // rotate 15 degrees per second around Y axis
+    cube_mesh.translate(Point3D{0.0f, 0.0f, 5.0f * deltaT});
+    RenderMesh3DWithFaceOrientation(Buffer, cube_mesh, depth_buffer);
 }
 
 void HandmadeInitialize()
@@ -520,7 +286,20 @@ void HandmadeInitialize()
     }
 
     cube_shape = GetSimpleCube();
-    
-    cube_shape.scale(120.0f);                       // make the cube bigger
-    cube_shape.translate(Point3D{0.0f, 0.0f, 200}); // move away from camera
+
+    cube_shape.scale(120.0f);                           // make the cube bigger
+    cube_shape.translate(Point3D{500.0f, 500.0f, 200}); // move away from camera
+
+    cube_mesh = GetCubeMesh();
+    cube_mesh.scale(120.0f);          // make the cube bigger
+    cube_mesh.translate({0, 0, 250}); // move away from camera
+}
+
+void HmadeOnBufferSizeChange(int new_width, int new_height)
+{
+    if (depth_buffer)
+    { // marks the old buffer for deallocation
+        free(depth_buffer);
+    }
+    depth_buffer = (float *)realloc(depth_buffer, sizeof(float) * new_width * new_height);
 }

@@ -2,24 +2,9 @@
 #define HANDMADE_H
 #include <string>
 #include "hand_keyboard.h"
+#include "Engine/visual_func.h"
 
-#define ARRAY_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-/** to be called on HandmadeScreenBuffer */
-#define colorPixel(Buffer, x, y, color)                                                                \
-    if ((x) >= 0 && (x) < (Buffer)->Width && (y) >= 0 && (y) < (Buffer)->Height)                       \
-    {                                                                                                  \
-        uint32_t *pixel = (uint32_t *)((uint8_t *)(Buffer)->Memory + (y) * (Buffer)->Pitch + (x) * 4); \
-        *pixel = (color);                                                                              \
-    }
-
-struct HandmadeScreenBuffer
-{
-    void *Memory;
-    int Width;
-    int Height;
-    int Pitch;
-};
 
 struct HandmadeSoundOutput
 {
@@ -36,13 +21,8 @@ struct HandmadeSoundOutput
     int framesWritten = 0;
 };
 
-struct RenderingArray
-{
-    int *Array;
-    int Width;
-    int Height;
-    int CellSize;
-};
+// for 3D rendering, must be allocated once...
+static float *depth_buffer = nullptr;
 
 static float SinWaveLastPhase = 0.0f;
 
@@ -65,5 +45,7 @@ void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, i
 static void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *SoundOutput, unified_input InputState, float deltaT, int queriedAudioFrames = 512);
 
 static void HandmadeInitialize();
+
+static void HmadeOnBufferSizeChange(int new_width, int new_height);
 
 #endif // HANDMADE_H

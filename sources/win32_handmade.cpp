@@ -51,6 +51,8 @@ static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInf
       bitMapMemorySize,
       MEM_RESERVE | MEM_COMMIT,
       PAGE_READWRITE);
+  
+  HmadeOnBufferSizeChange(Width, Height);
 }
 
 static void Win32CopyBufferToWindow(

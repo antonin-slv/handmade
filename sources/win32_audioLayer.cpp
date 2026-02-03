@@ -185,8 +185,8 @@ HRESULT win32GetFramesToFill(
         // we make sure the buffer fills between at least 10ms and at least 2 frames worth of time
 
         float targetBufferedDurationSec = lastFrameDuration * 2.0f;
-        if (targetBufferedDurationSec < 0.015f)
-            targetBufferedDurationSec = 0.015f;
+        if (targetBufferedDurationSec < 0.02f)
+            targetBufferedDurationSec = 0.02f;
         float timeToFillSec = targetBufferedDurationSec - currentBufferedDurationSec;
         if (timeToFillSec < 0.0f)
             timeToFillSec = 0.0f;

@@ -47,4 +47,25 @@ struct WireFrame3D : PointCloud
     }
 };
 
+/// !!! TRIANGLE ONLY
+struct Face {
+
+    uint16_t v[4];//we can store the normal in the 4th index if needed, anyway the alignment will be the same
+    uint32_t color;
+};
+
+struct Mesh3D : PointCloud {
+    Face* faces = nullptr;
+    int face_count = 0;
+    int max_faces = 0;
+
+    void addFace(uint16_t v1, uint16_t v2, uint16_t v3, uint32_t color) {
+        if (face_count < max_faces) {
+            faces[face_count++] = Face{{v1, v2, v3, 0}, color};
+        } else {
+            //TODO
+        }
+    }
+};
+
 #endif
