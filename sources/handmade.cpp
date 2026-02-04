@@ -265,6 +265,14 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
     cube_mesh.rotate_degree(Point3D{1.0f, 0.5f, 0.0f}, 30.0f * deltaT); // rotate 15 degrees per second around Y axis
     cube_mesh.translate(Point3D{0.0f, 0.0f, 5.0f * deltaT});
     RenderMesh3DWithFaceOrientation(Buffer, cube_mesh, depth_buffer);
+
+    //no vertices drawn yet
+    Sphere test_sphere = {};
+    test_sphere.center = Point3D{0.0f, 0.0f, 400.0f};
+    test_sphere.radius = 100.0f;
+
+    renderSphere3D(Buffer, test_sphere, depth_buffer);
+
 }
 
 void HandmadeInitialize()
@@ -292,7 +300,7 @@ void HandmadeInitialize()
 
     cube_mesh = GetCubeMesh();
     cube_mesh.scale(120.0f);          // make the cube bigger
-    cube_mesh.translate({0, 0, 250}); // move away from camera
+    cube_mesh.translate({0, 0, 400}); // move away from camera
 }
 
 void HmadeOnBufferSizeChange(int new_width, int new_height)

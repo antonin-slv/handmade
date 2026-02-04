@@ -68,4 +68,18 @@ struct Mesh3D : PointCloud {
     }
 };
 
+/**
+ * Shpère de base :
+ * - centre en center
+ * - rayon radius
+ * 
+ * - 2 vertex de référence (pour "avant" et "haut")
+ * - TODO : méthode propre pour stocker le maillage sphérique (possible de n'utiliser que les 2 vecteurs susmentionnés ?)
+ */
+struct Sphere : PointCloud
+{
+    float radius = 1.0f;
+
+};
+
 #endif

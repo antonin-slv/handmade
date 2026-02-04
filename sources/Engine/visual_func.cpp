@@ -420,3 +420,73 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
         }
     }
 }
+
+void renderSphere3D(HandmadeScreenBuffer *Buffer, Sphere sphere, float *depthBuffer)
+{
+    Point3D screenCenter = {};
+    screenCenter.x = Buffer->Width / 2;
+    screenCenter.y = Buffer->Height / 2;
+
+    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
+
+    Point3D lightSource = Point3D{-1.0f, 0.0f, 1.0f}.normalized();
+
+    Point3D projectedCenter = (sphere.center).BasicProjection();
+    projectedCenter.x *= quarter_size; // scale to screen space
+    projectedCenter.y *= quarter_size;
+    projectedCenter += screenCenter;                                        // translate to screen center
+    float projectedRadius = sphere.radius * quarter_size / sphere.center.z; // simple perspective projection
+
+    int min_x = (int)(projectedCenter.x - projectedRadius);
+    if (min_x < 0)
+        min_x = 0;
+    int max_x = (int)(projectedCenter.x + projectedRadius);
+    if (max_x >= Buffer->Width)
+        max_x = Buffer->Width - 1;
+    int min_y = (int)(projectedCenter.y - projectedRadius);
+    if (min_y < 0)
+        min_y = 0;
+    int max_y = (int)(projectedCenter.y + projectedRadius);
+    if (max_y >= Buffer->Height)
+        max_y = Buffer->Height - 1;
+
+    for (int y = min_y; y <= max_y; ++y)
+    {
+        for (int x = min_x; x <= max_x; ++x)
+        {
+            //
+
+            // test if inside the projected circle
+            float dx = x - projectedCenter.x;
+            float dy = y - projectedCenter.y;
+            if (dx * dx + dy * dy <= projectedRadius * projectedRadius)
+            {
+                // normal calculation
+
+                float dist_from_center_2 = dx * dx + dy * dy;
+                float relative_depth = sqrtf(sphere.radius * sphere.radius - dist_from_center_2);
+                float sample_z = sphere.center.z - relative_depth;
+
+                int pixelBufferIndex = y * Buffer->Width + x;
+                if (sample_z < depthBuffer[pixelBufferIndex])
+                {
+                    depthBuffer[pixelBufferIndex] = sample_z;
+
+                    Point3D normal = Point3D{dx, dy, relative_depth}.normalized();
+                    float light_intensity = dotProduct(normal, lightSource);
+                    if (light_intensity < 0.0f)
+                        light_intensity = 0.0f;
+                    else if (light_intensity > 1.0f)
+                        light_intensity = 1.0f;
+
+                    uint8_t shaded_red = (uint8_t)(255 * light_intensity);
+                    uint8_t shaded_green = (uint8_t)(0 * light_intensity);
+                    uint8_t shaded_blue = (uint8_t)(255 * light_intensity);
+                    uint32_t shaded_color = (shaded_red << 16) | (shaded_green << 8) | shaded_blue;
+
+                    COLOR_PIXEL(Buffer, x, y, shaded_color);
+                }
+            }
+        }
+    }
+}
