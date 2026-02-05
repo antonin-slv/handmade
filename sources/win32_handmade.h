@@ -1,6 +1,7 @@
 #ifndef WIN32_HANDMADE_H
 #define WIN32_HANDMADE_H
 
+#include "os_api.h"
 
 struct Win32WindowDimension
 {
@@ -9,8 +10,5 @@ struct Win32WindowDimension
 };
 
 //other stuff but wh&t ?
-
-
-
 
 #endif // WIN32_HANDMADE_H

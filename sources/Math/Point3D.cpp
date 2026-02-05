@@ -3,38 +3,23 @@
 // redefine operators
 Point3D Point3D::operator+(const Point3D &other) const
 {
-    Point3D result;
-    result.x = this->x + other.x;
-    result.y = this->y + other.y;
-    result.z = this->z + other.z;
-    return result;
+    return {this->x + other.x, this->y + other.y, this->z + other.z};
 };
 
 Point3D Point3D::operator-(const Point3D &other) const
 {
-    Point3D result;
-    result.x = this->x - other.x;
-    result.y = this->y - other.y;
-    result.z = this->z - other.z;
-    return result;
+    return {this->x - other.x, this->y - other.y, this->z - other.z};
 };
 
 Point3D Point3D::operator*(float scalar) const
 {
-    Point3D result;
-    result.x = this->x * scalar;
-    result.y = this->y * scalar;
-    result.z = this->z * scalar;
-    return result;
+    return {this->x * scalar, this->y * scalar, this->z * scalar};
 };
 
 Point3D Point3D::operator/(float scalar) const
 {
-    Point3D result;
-    result.x = this->x / scalar;
-    result.y = this->y / scalar;
-    result.z = this->z / scalar;
-    return result;
+    float invScalar = 1.0f / scalar;
+    return {this->x * invScalar, this->y * invScalar, this->z * invScalar};
 };
 
 Point3D &Point3D::operator+=(const Point3D &other)
@@ -79,15 +64,13 @@ static float dotProduct(const Point3D &a, const Point3D &b)
 
 static Point3D crossProduct(const Point3D &a, const Point3D &b)
 {
-    Point3D result;
-    result.x = a.y * b.z - a.z * b.y;
-    result.y = a.z * b.x - a.x * b.z;
-    result.z = a.x * b.y - a.y * b.x;
-    return result;
+    return {a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x};
 }
 
-
-Point3D Point3D::BasicProjection() const {
-    float logic_z = (this->z <=  0.001f) ? 0.001f : this->z;
+Point3D Point3D::BasicProjection() const
+{
+    float logic_z = (this->z <= 0.0001f) ? 0.0001f : this->z;
     return {this->x / logic_z, this->y / logic_z, this->z};
 }

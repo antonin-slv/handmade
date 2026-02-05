@@ -10,6 +10,7 @@
 
 static WireFrame3D cube_shape = {};
 static Mesh3D cube_mesh = {};
+static Mesh3D teapot_mesh = {};
 
 // audio functions  - - - - - - - - - - -
 
@@ -238,11 +239,11 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
 
     float fps = 1.0f / deltaT;
     char fps_buffer[256];
-    sprintf_s(fps_buffer, "FPS: %f\tMS: %f", fps, deltaT * 1000.0f);
+    sprintf_s(fps_buffer, "FPS: %.2f\tMS: %.1f", fps, deltaT * 1000.0f);
     renderString(Buffer, fps_buffer, 10, 10);
 
     char sound_buffer[256];
-    sprintf_s(sound_buffer, "Freq: %f Hz", SoundStat->Frequency);
+    sprintf_s(sound_buffer, "Freq: %.2f Hz", SoundStat->Frequency);
     renderString(Buffer, sound_buffer, 10, 30);
     char keyPressBuffer[256] = {};
     for (int i = 0; i < 256; ++i)
@@ -255,6 +256,7 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
 
     HandmadeFillAudioBuffer(*SoundStat, queriedAudioFrames);
 
+    /*
     DrawSoundBufferVisualization(Buffer, SoundStat);
 
     cube_shape.rotate_degree(Point3D{.5f, 1.0f, 0.0f}, 50.0f * deltaT); // rotate 15 degrees per second around Y axis
@@ -270,9 +272,126 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
     Sphere test_sphere = {};
     test_sphere.center = Point3D{0.0f, 0.0f, 400.0f};
     test_sphere.radius = 100.0f;
+    */
 
-    renderSphere3D(Buffer, test_sphere, depth_buffer);
+    // renderSphere3D(Buffer, test_sphere, depth_buffer);
 
+    // RenderMesh3DWithFaceOrientation(Buffer, teapot_mesh, depth_buffer);
+    // teapot_mesh.rotate_degree(Point3D{0.0f, 1.0f, 0.0f}, 60.0f * deltaT);
+    teapot_mesh.translate(Point3D{5.0f * deltaT,0.0f, 5.0f * deltaT});
+    teapot_mesh.rotate_degree(Point3D{0.0f, 1.0f, 0.0f}, 30.0f * deltaT);
+    RenderMesh3DWithFaceOrientation(Buffer, teapot_mesh, depth_buffer);
+    
+
+}
+
+
+bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D *outMesh)
+{
+
+    uint32_t vertex_count = 0;
+    uint32_t face_count = 0;
+    for (unsigned int i = 0; i < objFileSize;)
+    {
+        if (objData[i] == 'v' && objData[i + 1] == ' ')
+        {
+            vertex_count++;
+        }
+        else if (objData[i] == 'f' && objData[i + 1] == ' ')
+        {
+            face_count++;
+        }
+
+        // move to next line
+        while (i < objFileSize && objData[i] != '\n')
+            ++i;
+        ++i; // skip newline
+    }
+    if (vertex_count == 0 || face_count == 0)
+    {
+        return false;
+    }
+    if (vertex_count > 0xFFFF || face_count > 0xFFFF)
+    {
+        return false; // too many vertices / faces for our current implementation
+    }
+
+
+    void * realMemory = malloc(sizeof(Point3D) * vertex_count + sizeof(Face) * face_count);
+    if (!realMemory)
+    {
+        return false;
+    }
+
+    outMesh->vertices = (Point3D *)realMemory;
+    outMesh->max_vertices = vertex_count;
+    outMesh->vertex_count = 0;
+    outMesh->faces = (Face *)((uint8_t *)realMemory + sizeof(Point3D) * vertex_count);
+    outMesh->max_faces = face_count;
+    outMesh->face_count = 0;
+
+    Point3D center = {0.0f, 0.0f, 0.0f};
+
+    float min_x = FLT_MAX, min_y = FLT_MAX, min_z = FLT_MAX;
+    float max_x = -FLT_MAX, max_y = -FLT_MAX, max_z = -FLT_MAX;
+    
+    for (unsigned int i = 0; i < objFileSize;)
+    {
+        if (objData[i] == 'v' && objData[i + 1] == ' ')
+        {
+            i += 2; // skip "v "
+            float x = strtof(&objData[i], nullptr);
+            while (i < objFileSize && objData[i] != ' ')
+                ++i;
+            i++; // skip space
+            float y = strtof(&objData[i], nullptr);
+            while (i < objFileSize && objData[i] != ' ')
+                ++i;
+            i++; // skip space
+            float z = strtof(&objData[i], nullptr);
+            Point3D vertex = {x, y, z};
+            outMesh->addVertex(vertex);
+            center += vertex;
+            if (x < min_x) min_x = x;
+            if (y < min_y) min_y = y;
+            if (z < min_z) min_z = z;
+            if (x > max_x) max_x = x;
+            if (y > max_y) max_y = y;
+            if (z > max_z) max_z = z;
+        }
+           
+        else if (objData[i] == 'f' && objData[i + 1] == ' ')
+        {
+            i += 2; // skip "f "
+            uint16_t v1 = (uint16_t)(strtol(&objData[i], nullptr, 10) - 1);
+            while (i < objFileSize && objData[i] != ' ')
+                ++i;
+            i++; // skip space
+            uint16_t v2 = (uint16_t)(strtol(&objData[i], nullptr, 10) - 1);
+            while (i < objFileSize && objData[i] != ' ')
+                ++i;
+            i++; // skip space
+            uint16_t v3 = (uint16_t)(strtol(&objData[i], nullptr, 10) - 1);
+            if (v1 >= outMesh->vertex_count || v2 >= outMesh->vertex_count || v3 >= outMesh->vertex_count)
+            {
+                free(realMemory);
+                return false;
+            }
+            outMesh->addFace(v1, v2, v3, 0x00FF00FF);
+        }
+
+        // move to next line
+        while (i < objFileSize && objData[i] != '\n')
+            ++i;
+        ++i; // skip newline
+    }
+    if (outMesh->vertex_count != vertex_count || outMesh->face_count != face_count)
+    {
+        free(realMemory);
+        return false;
+    }
+    outMesh->center = Point3D{0.5f * (min_x + max_x), 0.5f * (min_y + max_y), 0.5f * (min_z + max_z)};
+    return true;
 }
 
 void HandmadeInitialize()
@@ -292,15 +411,29 @@ void HandmadeInitialize()
             test_array.Array[y * test_array.Width + x] = (red << 16) | (green << 8) | blue;
         }
     }
-
-    cube_shape = GetSimpleCube();
-
-    cube_shape.scale(120.0f);                           // make the cube bigger
-    cube_shape.translate(Point3D{500.0f, 500.0f, 200}); // move away from camera
-
     cube_mesh = GetCubeMesh();
-    cube_mesh.scale(120.0f);          // make the cube bigger
-    cube_mesh.translate({0, 0, 400}); // move away from camera
+    cube_mesh.scale(100.0f);          // make the cube bigger
+    cube_mesh.translate({-150, 0,250}); // move away from camera
+
+
+    void *obj_data = nullptr;
+    unsigned int obj_file_size = 0;
+
+    if (os_ReadFile("../data/teapot.obj", &obj_data, &obj_file_size))
+    {
+        os_PrintLog("Loaded teapot.obj successfully\n");
+        if (ParseShapeFromOBJData((char *)obj_data, obj_file_size, &teapot_mesh)) {
+            os_PrintLog("Parsed teapot.obj successfully\n");
+
+            teapot_mesh.inverseWindingAllFaces();
+            teapot_mesh.scale(150.0f);
+            teapot_mesh.rotate_degree(Point3D{1.0f, 0.0f, 0.0f}, 180.0f);
+            teapot_mesh.translate({0.0f, 250.0f, 500.0f});
+        } else {
+            os_PrintLog("Failed to parse teapot.obj\n");
+        }
+        os_FreeMemory(obj_data);
+    }
 }
 
 void HmadeOnBufferSizeChange(int new_width, int new_height)

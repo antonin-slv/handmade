@@ -182,11 +182,8 @@ HRESULT win32GetFramesToFill(
         // calculate time remaining in buffer
         float currentBufferedDurationSec = (float)padding / (float)SampleRate;
 
-        // we make sure the buffer fills between at least 10ms and at least 2 frames worth of time
-
-        float targetBufferedDurationSec = lastFrameDuration * 2.0f;
-        if (targetBufferedDurationSec < 0.02f)
-            targetBufferedDurationSec = 0.02f;
+        // this could be upgraded with a calculation of 1% high frame time or smth like that... or using a separate thread for audio)
+        float targetBufferedDurationSec = lastFrameDuration * 5.0f;
         float timeToFillSec = targetBufferedDurationSec - currentBufferedDurationSec;
         if (timeToFillSec < 0.0f)
             timeToFillSec = 0.0f;

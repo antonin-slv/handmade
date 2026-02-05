@@ -52,6 +52,10 @@ struct Face {
 
     uint16_t v[4];//we can store the normal in the 4th index if needed, anyway the alignment will be the same
     uint32_t color;
+
+    void inverseWinding() {
+        std::swap(v[1], v[2]);
+    }
 };
 
 struct Mesh3D : PointCloud {
@@ -64,6 +68,20 @@ struct Mesh3D : PointCloud {
             faces[face_count++] = Face{{v1, v2, v3, 0}, color};
         } else {
             //TODO
+        }
+    }
+
+    void addFace(const Face& face) {
+        if (face_count < max_faces) {
+            faces[face_count++] = face;
+        } else {
+            //TODO
+        }
+    }
+
+    void inverseWindingAllFaces() {
+        for (int i = 0; i < face_count; i++) {
+            faces[i].inverseWinding();
         }
     }
 };

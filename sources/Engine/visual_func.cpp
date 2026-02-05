@@ -115,7 +115,7 @@ void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
     }
 }
 
-void RenderCube(HandmadeScreenBuffer *Buffer, PointCloud &cube)
+void RenderPoints(HandmadeScreenBuffer *Buffer, PointCloud &cube)
 {
 
     Point3D screenCenter = {};
@@ -254,27 +254,29 @@ void RenderMesh3D(HandmadeScreenBuffer *Buffer, Mesh3D &mesh, float *depthBuffer
         Point3D p2 = vertices[face->v[1]];
         Point3D p3 = vertices[face->v[2]];
 
-        float min_x = (std::min)(p1.x, (std::min)(p2.x, p3.x));
-        if (min_x < 0.0f)
-            min_x = 0.0f;
-        float max_x = (std::max)(p1.x, (std::max)(p2.x, p3.x));
-        if (max_x >= (float)Buffer->Width)
-            max_x = (float)(Buffer->Width - 1);
-        float min_y = (std::min)(p1.y, (std::min)(p2.y, p3.y));
-        if (min_y < 0.0f)
-            min_y = 0.0f;
-        float max_y = (std::max)(p1.y, (std::max)(p2.y, p3.y));
-        if (max_y >= (float)Buffer->Height)
-            max_y = (float)(Buffer->Height - 1);
+        float min_x = (std::max)(0.0f, (std::min)({p1.x, p2.x, p3.x}));
+        float max_x = (std::min)((float)(Buffer->Width), (std::max)({p1.x, p2.x, p3.x}));
+        if (max_x <= min_x)
+            continue;
+        float min_y = (std::max)(0.0f, (std::min)({p1.y, p2.y, p3.y}));
+        float max_y = (std::min)((float)(Buffer->Height), (std::max)({p1.y, p2.y, p3.y}));
+        if (max_y <= min_y)
+            continue;
+
 
         float alpha_divide = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
-        if (alpha_divide == 0.0f)
+        if (alpha_divide == 0.0f) [[unlikely]]
+        {
             continue;
+        }
         else
             alpha_divide = 1.0f / alpha_divide;
         float beta_divide = ((p3.y - p1.y) * (p2.x - p3.x) + (p1.x - p3.x) * (p2.y - p3.y));
-        if (beta_divide == 0.0f)
+        // likely false test :
+        if (beta_divide == 0.0f) [[unlikely]]
+        {
             continue;
+        }
         else
             beta_divide = 1.0f / beta_divide;
 
@@ -313,7 +315,7 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
 
     float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
 
-    Point3D light_direction = Point3D{-1.0f, 0, -1.0f}.normalized();
+    Point3D light_direction = Point3D{1.0f, 0, 1.0f}.normalized();
 
     // vertices in screen space
     Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * mesh.vertex_count);
@@ -330,70 +332,53 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
     {
         Face *face = &mesh.faces[i];
 
-        Point3D original_p1 = mesh.vertices[face->v[0]];
-        Point3D original_p2 = mesh.vertices[face->v[1]];
-        Point3D original_p3 = mesh.vertices[face->v[2]];
-
         Point3D p1 = vertices[face->v[0]];
         Point3D p2 = vertices[face->v[1]];
         Point3D p3 = vertices[face->v[2]];
 
-        float min_x = (std::min)(p1.x, (std::min)(p2.x, p3.x));
-        if (min_x < 0.0f)
-            min_x = 0.0f;
-        else if (min_x >= (float)Buffer->Width)
+        float min_x = (std::max)(0.0f, (std::min)({p1.x, p2.x, p3.x}));
+        float max_x = (std::min)((float)(Buffer->Width), (std::max)({p1.x, p2.x, p3.x}));
+        if (max_x <= min_x)
             continue;
-        float max_x = (std::max)(p1.x, (std::max)(p2.x, p3.x));
-        if (max_x >= (float)Buffer->Width)
-            max_x = (float)(Buffer->Width - 1);
-        else if (max_x < 0.0f)
-            continue;
-        float min_y = (std::min)(p1.y, (std::min)(p2.y, p3.y));
-        if (min_y < 0.0f)
-            min_y = 0.0f;
-        else if (min_y >= (float)Buffer->Height)
-            continue;
-        float max_y = (std::max)(p1.y, (std::max)(p2.y, p3.y));
-        if (max_y >= (float)Buffer->Height)
-            max_y = (float)(Buffer->Height - 1);
-        else if (max_y < 0.0f)
+        float min_y = (std::max)(0.0f, (std::min)({p1.y, p2.y, p3.y}));
+        float max_y = (std::min)((float)(Buffer->Height), (std::max)({p1.y, p2.y, p3.y}));
+        if (max_y <= min_y)
             continue;
 
         // calcul de l'orientation de la face
-        Point3D face_normal = crossProduct(original_p1 - original_p2, original_p3 - original_p2);
-        if (face_normal.z >= 0.0f)
+        Point3D screen_face_normal = crossProduct(p2 - p1, p3 - p1);
+        if (screen_face_normal.z <= 0.0f) [[unlikely]]
             continue; // backface culling
+
+        float alpha_divide = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
+        if (alpha_divide == 0.f) [[unlikely]]
+            continue;
+        else
+            alpha_divide = 1.0f / alpha_divide;
+        float beta_divide = ((p3.y - p1.y) * (p2.x - p3.x) + (p1.x - p3.x) * (p2.y - p3.y));
+        if (beta_divide == 0.f) [[unlikely]]
+            continue;
+        else
+            beta_divide = 1.0f / beta_divide;
 
         uint32_t shaded_color = 0;
         {
-            face_normal = face_normal.normalized();
-            float light_intensity = dotProduct(face_normal, light_direction);
+            Point3D n_original_p1 = mesh.vertices[face->v[0]];
+            Point3D n_original_p2 = mesh.vertices[face->v[1]];
+            Point3D n_original_p3 = mesh.vertices[face->v[2]];
+            Point3D real_normal = crossProduct(n_original_p2 - n_original_p1, n_original_p3 - n_original_p1);
+            float light_intensity = dotProduct(screen_face_normal.normalized(), light_direction);
             if (light_intensity < 0.0f)
                 light_intensity = 0.0f;
             else if (light_intensity > 1.0f)
                 light_intensity = 1.0f;
 
-            uint8_t face_red = (uint8_t)((face->color >> 16) & 0xFF);
-            uint8_t face_green = (uint8_t)((face->color >> 8) & 0xFF);
-            uint8_t face_blue = (uint8_t)(face->color & 0xFF);
+            uint8_t face_red = (uint8_t)((face->color >> 16) & 0xFF) * light_intensity;
+            uint8_t face_green = (uint8_t)((face->color >> 8) & 0xFF) * light_intensity;
+            uint8_t face_blue = (uint8_t)(face->color & 0xFF) * light_intensity;
 
-            uint8_t shaded_red = (uint8_t)(face_red * light_intensity);
-            uint8_t shaded_green = (uint8_t)(face_green * light_intensity);
-            uint8_t shaded_blue = (uint8_t)(face_blue * light_intensity);
-
-            shaded_color = (shaded_red << 16) | (shaded_green << 8) | shaded_blue;
+            shaded_color = (face_red << 16) | (face_green << 8) | face_blue;
         }
-
-        float alpha_divide = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
-        if (alpha_divide == 0.0f)
-            continue;
-        else
-            alpha_divide = 1.0f / alpha_divide;
-        float beta_divide = ((p3.y - p1.y) * (p2.x - p3.x) + (p1.x - p3.x) * (p2.y - p3.y));
-        if (beta_divide == 0.0f)
-            continue;
-        else
-            beta_divide = 1.0f / beta_divide;
 
         for (int y = (int)min_y; y <= (int)max_y; ++y)
         {
@@ -410,7 +395,7 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
                     // inside the triangle
                     float sample_z = p1.z * alpha + p2.z * beta + p3.z * gamma;
 
-                    if (sample_z < depthBuffer[pixelBufferIndex])
+                    if (sample_z < depthBuffer[pixelBufferIndex] && sample_z > 0.0f)
                     {
                         depthBuffer[pixelBufferIndex] = sample_z;
                         COLOR_PIXEL(Buffer, x, y, shaded_color);
@@ -419,6 +404,8 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
             }
         }
     }
+
+    free(vertices);
 }
 
 void renderSphere3D(HandmadeScreenBuffer *Buffer, Sphere sphere, float *depthBuffer)

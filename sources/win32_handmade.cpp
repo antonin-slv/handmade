@@ -51,7 +51,7 @@ static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInf
       bitMapMemorySize,
       MEM_RESERVE | MEM_COMMIT,
       PAGE_READWRITE);
-  
+
   HmadeOnBufferSizeChange(Width, Height);
 }
 
@@ -271,10 +271,10 @@ int WINAPI WinMain(
       SoundStat.SampleRate = pwfx->nSamplesPerSec;
       SoundStat.channels = pwfx->nChannels;
       SoundStat.Frequency = 440.0f;
-      SoundStat.Volume = 0.5f;
+      SoundStat.Volume = 0.2f;
       SoundStat.SampleIndex = 0;
       SoundStat.Buffer = (float *)malloc(pwfx->nSamplesPerSec * sizeof(float) * SoundStat.channels); // 1 second buffer
-    
+
       hasAudio = true;
     }
     Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
@@ -331,7 +331,7 @@ int WINAPI WinMain(
       }
     }
     UINT32 framesToFill1 = 512;
-    //gets the number of frames to put in the buffer to maintain low latency
+    // gets the number of frames to put in the buffer to maintain low latency
     win32GetFramesToFill(*pAudioClient, (UINT32 &)framesToFill1, SoundStat.SampleRate, deltaT);
     uint32_t framesToFill = framesToFill1;
 
@@ -370,4 +370,68 @@ int WINAPI WinMain(
   CoUninitialize();
 
   return 0;
+}
+
+bool os_ReadFile(const char *Filename, void **Dest, unsigned int *FileSize)
+{
+  HANDLE fileHandle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (fileHandle == INVALID_HANDLE_VALUE)
+  {
+    OutputDebugStringA("Failed to open file.\n");
+    *Dest = nullptr;
+    *FileSize = 0;
+    return false;
+  }
+
+  LARGE_INTEGER fileSizeLI;
+  if (!GetFileSizeEx(fileHandle, &fileSizeLI))
+  {
+    OutputDebugStringA("Failed to get file size.\n");
+    CloseHandle(fileHandle);
+    *Dest = nullptr;
+    *FileSize = 0;
+    return false;
+  }
+
+  unsigned int fileSize = (unsigned int)fileSizeLI.QuadPart;
+  void *buffer = VirtualAlloc(NULL, fileSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!buffer)
+  {
+    OutputDebugStringA("Failed to allocate memory for file.\n");
+    CloseHandle(fileHandle);
+    *Dest = nullptr;
+    *FileSize = 0;
+    return false;
+  }
+
+  DWORD bytesRead;
+  if (!ReadFile(fileHandle, buffer, fileSize, &bytesRead, NULL) || bytesRead != fileSize)
+  {
+    OutputDebugStringA("Failed to read file.\n");
+    VirtualFree(buffer, 0, MEM_RELEASE);
+    CloseHandle(fileHandle);
+    *Dest = nullptr;
+    *FileSize = 0;
+    return false;
+  }
+
+  CloseHandle(fileHandle);
+  *Dest = buffer;
+  *FileSize = fileSize;
+
+  return true;
+}
+
+bool os_FreeMemory(void *MemoryPtr)
+{
+  if (MemoryPtr)
+  {
+    VirtualFree(MemoryPtr, 0, MEM_RELEASE);
+  }
+  return true;
+}
+
+void os_PrintLog(const char *Message)
+{
+  printf("%s", Message);
 }
