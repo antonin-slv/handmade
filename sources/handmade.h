@@ -6,6 +6,18 @@
 #include "os_api.h"
 
 
+#define KILOBYTES(Value) ((Value)*1024LL)
+#define MEGABYTES(Value) (KILOBYTES(Value)*1024LL)
+#define GIGABYTES(Value) (MEGABYTES(Value)*1024LL)
+
+#define ARRAY_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+#if HANDMADE_FAST
+#define Assert(Expression) 
+#else
+#define Assert(Expression) if(!Expression) {*(int * )0 = 0;}
+#endif
+
 struct HandmadeSoundOutput
 {
     float *Buffer;
@@ -20,6 +32,7 @@ struct HandmadeSoundOutput
 
     int framesWritten = 0;
 };
+
 
 // for 3D rendering, must be allocated once...
 static float *depth_buffer = nullptr;
@@ -36,10 +49,6 @@ void HandmadeFillAudioBuffer(
     HandmadeSoundOutput &soundOutput,
     int frameCount);
 
-void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
-                        int x_offset, int y_offset, float zoom_level);
-
-void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y);
 
 // in the end the only function ?
 static void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *SoundOutput, unified_input InputState, float deltaT, int queriedAudioFrames = 512);

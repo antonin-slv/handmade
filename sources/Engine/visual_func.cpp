@@ -144,8 +144,7 @@ void RenderCubeSides(HandmadeScreenBuffer *Buffer, WireFrame3D &cube)
     screenCenter.y = Buffer->Height / 2;
 
     float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
-
-    Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * cube.vertex_count);
+    Point3D *vertices = (Point3D *)PushSize(&GlobalMemory.Transient, sizeof(Point3D) * cube.vertex_count);
     // copies the points, while sending them in screenspace.
     for (int i = 0; i < cube.vertex_count; i++)
     {
@@ -224,7 +223,8 @@ void RenderCubeSides(HandmadeScreenBuffer *Buffer, WireFrame3D &cube)
         }
     }
 
-    free(vertices);
+    GlobalMemory.Transient.used -= sizeof(Point3D) * cube.vertex_count; // we can free the memory we allocated for the vertices, since we won't be using it anymore
+
 }
 
 void RenderMesh3D(HandmadeScreenBuffer *Buffer, Mesh3D &mesh, float *depthBuffer)
@@ -236,7 +236,7 @@ void RenderMesh3D(HandmadeScreenBuffer *Buffer, Mesh3D &mesh, float *depthBuffer
 
     float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
 
-    Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * mesh.vertex_count);
+    Point3D *vertices = (Point3D *)PushSize(&GlobalMemory.Transient, sizeof(Point3D) * mesh.vertex_count);
     // copies the points, while sending them in screenspace.
     for (int i = 0; i < mesh.vertex_count; i++)
     {
@@ -304,6 +304,7 @@ void RenderMesh3D(HandmadeScreenBuffer *Buffer, Mesh3D &mesh, float *depthBuffer
             }
         }
     }
+    GlobalMemory.Transient.used -= sizeof(Point3D) * mesh.vertex_count; // we can free the memory we allocated for the vertices, since we won't be using it anymore
 }
 
 void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh, float *depthBuffer)
@@ -318,7 +319,7 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
     Point3D light_direction = Point3D{1.0f, 0, 1.0f}.normalized();
 
     // vertices in screen space
-    Point3D *vertices = (Point3D *)malloc(sizeof(Point3D) * mesh.vertex_count);
+    Point3D *vertices = (Point3D *)PushSize(&GlobalMemory.Transient, sizeof(Point3D) * mesh.vertex_count);
     // copies the points, while sending them in screenspace.
     for (int i = 0; i < mesh.vertex_count; i++)
     {
@@ -405,7 +406,6 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
         }
     }
 
-    free(vertices);
 }
 
 void renderSphere3D(HandmadeScreenBuffer *Buffer, Sphere sphere, float *depthBuffer)

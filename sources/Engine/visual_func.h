@@ -4,7 +4,6 @@
 #include "../Math/Shape3D.h"
 #include "../hand_keyboard.h"
 
-#define ARRAY_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #define COLOR_PIXEL(Buffer, x, y, color)                                                        \
     {                                                                                                  \
@@ -32,6 +31,11 @@ struct RenderingArray
     int Height;
     int CellSize;
 };
+
+void renderArrayPattern(HandmadeScreenBuffer *Buffer, RenderingArray array,
+                        int x_offset, int y_offset, float zoom_level);
+
+void renderString(HandmadeScreenBuffer *buffer, const std::string &str, int x, int y);
 
 
 

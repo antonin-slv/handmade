@@ -285,7 +285,10 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
 
 }
 
-
+/** 
+ * loads a mesh from an OBJ file data in PERMANENT memory, and returns true if successful, false otherwise.
+ * 
+ */
 bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D *outMesh)
 {
 
@@ -315,9 +318,9 @@ bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D
     {
         return false; // too many vertices / faces for our current implementation
     }
-
-
-    void * realMemory = malloc(sizeof(Point3D) * vertex_count + sizeof(Face) * face_count);
+    int total_memory_needed = sizeof(Point3D) * vertex_count + sizeof(Face) * face_count;
+    void * realMemory = PushSize(&GlobalMemory.Permanent, total_memory_needed); 
+    // we allocate the memory for the vertices and faces in one go, so we only have to do one allocation call, and we can be sure that all the data is contiguous in memory, which is better for cache performance.
     if (!realMemory)
     {
         return false;
@@ -374,7 +377,7 @@ bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D
             uint16_t v3 = (uint16_t)(strtol(&objData[i], nullptr, 10) - 1);
             if (v1 >= outMesh->vertex_count || v2 >= outMesh->vertex_count || v3 >= outMesh->vertex_count)
             {
-                free(realMemory);
+                GlobalMemory.Permanent.used -= total_memory_needed; // free the memory we allocated for the vertices and faces, since we won't be using it
                 return false;
             }
             outMesh->addFace(v1, v2, v3, 0x00FF00FF);
@@ -387,7 +390,8 @@ bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D
     }
     if (outMesh->vertex_count != vertex_count || outMesh->face_count != face_count)
     {
-        free(realMemory);
+        //frees the memory we allocated for the vertices and faces, since we won't be using it
+        GlobalMemory.Permanent.used -= total_memory_needed;
         return false;
     }
     outMesh->center = Point3D{0.5f * (min_x + max_x), 0.5f * (min_y + max_y), 0.5f * (min_z + max_z)};
@@ -400,7 +404,9 @@ void HandmadeInitialize()
     test_array.Width = 2000;
     test_array.Height = 2000;
     test_array.CellSize = 10;
-    test_array.Array = (int *)malloc(test_array.Width * test_array.Height * sizeof(int));
+    // we will never free this memory, so we can just allocate it in the permanent storage
+    test_array.Array = (int *)PushSize(&GlobalMemory.Permanent, test_array.Width * test_array.Height * sizeof(int));
+
     for (int y = 0; y < test_array.Height; y++)
     {
         for (int x = 0; x < test_array.Width; x++)
@@ -411,7 +417,7 @@ void HandmadeInitialize()
             test_array.Array[y * test_array.Width + x] = (red << 16) | (green << 8) | blue;
         }
     }
-    cube_mesh = GetCubeMesh();
+    cube_mesh = GetCubeMesh(&GlobalMemory.Permanent);
     cube_mesh.scale(100.0f);          // make the cube bigger
     cube_mesh.translate({-150, 0,250}); // move away from camera
 
@@ -432,15 +438,16 @@ void HandmadeInitialize()
         } else {
             os_PrintLog("Failed to parse teapot.obj\n");
         }
-        os_FreeMemory(obj_data);
     }
 }
 
+
+/* TODO faire ça bien peut être :
+
+assert : GlobalMemory.Backbuffer -> already initialized with screen data
+
+*/
 void HmadeOnBufferSizeChange(int new_width, int new_height)
 {
-    if (depth_buffer)
-    { // marks the old buffer for deallocation
-        free(depth_buffer);
-    }
-    depth_buffer = (float *)realloc(depth_buffer, sizeof(float) * new_width * new_height);
+    depth_buffer = (float *)PushSize(&GlobalMemory.Backbuffer, new_width * new_height * sizeof(float));
 }

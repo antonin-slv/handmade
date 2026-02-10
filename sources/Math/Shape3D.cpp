@@ -64,11 +64,11 @@ void PointCloud::rotate(const Point3D &axis, float angleRadians)
 
 
 
-WireFrame3D GetSimpleCube() {
+WireFrame3D GetSimpleCube(ScratchArena *arena) {
     WireFrame3D cube_shape = {};
 
     cube_shape.max_vertices = 8;
-    cube_shape.vertices = new Point3D[cube_shape.max_vertices];
+    cube_shape.vertices = (Point3D *)PushSize(arena, sizeof(Point3D) * cube_shape.max_vertices);
 
     cube_shape.addVertex(Point3D{-1.0f, -1.0f, -1.0f});
     cube_shape.addVertex(Point3D{1.0f, -1.0f, -1.0f});
@@ -82,7 +82,9 @@ WireFrame3D GetSimpleCube() {
     cube_shape.center = Point3D{0.0f, 0.0f, 0.0f};
 
     cube_shape.max_edges = 12;
-    cube_shape.edges = new std::pair<uint16_t, uint16_t>[cube_shape.max_edges];
+    
+    cube_shape.edges = (std::pair<uint16_t, uint16_t> *)PushSize(arena, sizeof(std::pair<uint16_t, uint16_t>) * cube_shape.max_edges);
+
     // front face
     cube_shape.addEdge(0, 1);
     cube_shape.addEdge(1, 2);
@@ -102,12 +104,15 @@ WireFrame3D GetSimpleCube() {
     return cube_shape;
 }
 
-
-Mesh3D GetCubeMesh() {
+/* 
+    summons Cube mesh into TRANSIANT memory.
+    do what you can with it (like copy it to permanent)
+*/
+Mesh3D GetCubeMesh(ScratchArena *arena) {
     Mesh3D cube_mesh = {};
 
     cube_mesh.max_vertices = 8;
-    cube_mesh.vertices = new Point3D[cube_mesh.max_vertices];
+    cube_mesh.vertices = (Point3D *)PushSize(arena, sizeof(Point3D) * cube_mesh.max_vertices);
 
     cube_mesh.addVertex(Point3D{-1.0f, -1.0f, -1.0f});//0
     cube_mesh.addVertex(Point3D{1.0f, -1.0f, -1.0f});//1
@@ -121,7 +126,7 @@ Mesh3D GetCubeMesh() {
     cube_mesh.center = Point3D{0.0f, 0.0f, 0.0f};
 
     cube_mesh.max_faces = 12; // 2 triangles per face * 6 faces
-    cube_mesh.faces = new Face[cube_mesh.max_faces];
+    cube_mesh.faces = (Face *)PushSize(arena, sizeof(Face) * cube_mesh.max_faces);
 
     // front face
     cube_mesh.addFace(0, 1, 2, 0xFF0000); // red

@@ -25,13 +25,36 @@ static bool running;
 static unified_input InputState;
 static float zoom_level = 1.0f;
 
+
+void *PushSize(ScratchArena *arena, size_t size)
+{
+  // Alignement à 16 octets pour le SIMD
+  size_t aligned_size = (size + 0xF) & ~0xF;
+
+  if (arena->used + aligned_size > arena->capacity)
+  {
+    //TODO : handle out of memory
+    Assert(false);
+    return nullptr;
+  }
+
+  void *ptr = arena->base + arena->used;
+  arena->used += aligned_size;
+  return ptr;
+}
+
+void InitArena(ScratchArena *arena, uint8_t *base, size_t capacity)
+{
+  arena->base = base;
+  arena->capacity = capacity;
+  arena->used = 0;
+}
+
+
 static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInfo, int Width, int Height)
 {
 
-  if (Buffer->Memory)
-  {
-    VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
-  }
+  GlobalMemory.Backbuffer.used = 0; // reset backbuffer arena
 
   Buffer->Width = Width;
   Buffer->Height = Height;
@@ -46,11 +69,9 @@ static void ResizeDIBSection(HandmadeScreenBuffer *Buffer, BITMAPINFO *BufferInf
   Buffer->Pitch = Buffer->Width * BytesPerPixel;
 
   int bitMapMemorySize = (Buffer->Width * Buffer->Height) * BytesPerPixel;
-  Buffer->Memory = VirtualAlloc(
-      nullptr,
-      bitMapMemorySize,
-      MEM_RESERVE | MEM_COMMIT,
-      PAGE_READWRITE);
+
+
+  Buffer->Memory = PushSize(&GlobalMemory.Backbuffer, bitMapMemorySize);
 
   HmadeOnBufferSizeChange(Width, Height);
 }
@@ -212,6 +233,22 @@ int WINAPI WinMain(
     LPSTR CommandLine,
     int nShowCmd)
 {
+
+  //memory initialization
+  GlobalMemory = {};
+  GlobalMemory.IsInitialized = false;
+  GlobalMemory.TotalSize = GIGABYTES(1); // 1 Gigabyte for the whole game (code + assets + runtime memory)
+  GlobalMemory.BasePointer = (uint8_t *)VirtualAlloc(
+      nullptr,
+      GlobalMemory.TotalSize,
+      MEM_RESERVE | MEM_COMMIT,
+      PAGE_READWRITE);
+
+  InitArena(&GlobalMemory.Permanent, (uint8_t *)GlobalMemory.BasePointer, MEGABYTES(32)); // 32 MegaBytes for permanent storage
+  //colorspace : x*y*(4 RGB bytes per pixel + 4 bytes for depth buffer) -> max 
+  InitArena(&GlobalMemory.Backbuffer, (uint8_t *)GlobalMemory.BasePointer + MEGABYTES(32), MEGABYTES(64)); // 64 MegaBytes for backbuffer storage (size for 4K resolution with depth buffer)
+  InitArena(&GlobalMemory.Transient, (uint8_t *)GlobalMemory.BasePointer + MEGABYTES(96), GlobalMemory.TotalSize - MEGABYTES(96)); // the rest for transient storage
+  
   WNDCLASS windowClass = {};
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = mainWindowCallback;
@@ -273,8 +310,8 @@ int WINAPI WinMain(
       SoundStat.Frequency = 440.0f;
       SoundStat.Volume = 0.2f;
       SoundStat.SampleIndex = 0;
-      SoundStat.Buffer = (float *)malloc(pwfx->nSamplesPerSec * sizeof(float) * SoundStat.channels); // 1 second buffer
-
+      //sound buffer never changes size so we can allocate it once here
+      SoundStat.Buffer = (float *)PushSize(&GlobalMemory.Permanent, pwfx->nSamplesPerSec * sizeof(float) * SoundStat.channels);
       hasAudio = true;
     }
     Win32FillAudioBuffer(*pAudioClient, pRenderAudioClient, audioFlags, SoundStat);
@@ -354,6 +391,9 @@ int WINAPI WinMain(
 
     // advance frame index
     framCount++;
+
+    //clears the transient buffer :
+    GlobalMemory.Transient.used = 0;
   }
 
   OutputDebugStringA("Average frame time (ms): ");
@@ -394,9 +434,9 @@ bool os_ReadFile(const char *Filename, void **Dest, unsigned int *FileSize)
   }
 
   unsigned int fileSize = (unsigned int)fileSizeLI.QuadPart;
-  void *buffer = VirtualAlloc(NULL, fileSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  void *buffer = PushSize(&GlobalMemory.Transient, fileSize);
   if (!buffer)
-  {
+  { //in theory, this should never happen as the transient storage should just crash if we run out of memory
     OutputDebugStringA("Failed to allocate memory for file.\n");
     CloseHandle(fileHandle);
     *Dest = nullptr;
@@ -408,7 +448,7 @@ bool os_ReadFile(const char *Filename, void **Dest, unsigned int *FileSize)
   if (!ReadFile(fileHandle, buffer, fileSize, &bytesRead, NULL) || bytesRead != fileSize)
   {
     OutputDebugStringA("Failed to read file.\n");
-    VirtualFree(buffer, 0, MEM_RELEASE);
+    GlobalMemory.Transient.used -= fileSize; // mark the memory as free in the arena
     CloseHandle(fileHandle);
     *Dest = nullptr;
     *FileSize = 0;
@@ -419,15 +459,6 @@ bool os_ReadFile(const char *Filename, void **Dest, unsigned int *FileSize)
   *Dest = buffer;
   *FileSize = fileSize;
 
-  return true;
-}
-
-bool os_FreeMemory(void *MemoryPtr)
-{
-  if (MemoryPtr)
-  {
-    VirtualFree(MemoryPtr, 0, MEM_RELEASE);
-  }
   return true;
 }
 
