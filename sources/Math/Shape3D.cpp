@@ -108,11 +108,12 @@ WireFrame3D GetSimpleCube(ScratchArena *arena) {
     summons Cube mesh into TRANSIANT memory.
     do what you can with it (like copy it to permanent)
 */
-Mesh3D GetCubeMesh(ScratchArena *arena) {
-    Mesh3D cube_mesh = {};
+Mesh3D2 GetCubeMesh(ScratchArena *arena) {
+    Mesh3D2 cube_mesh = {};
 
     cube_mesh.max_vertices = 8;
-    cube_mesh.vertices = (Point3D *)PushSize(arena, sizeof(Point3D) * cube_mesh.max_vertices);
+    cube_mesh.chunk_count = (cube_mesh.max_vertices + 3) / 4; // each chunk can hold 4 vertices
+    cube_mesh.chunks = (Point3DChunk *)PushSize(arena, sizeof(Point3DChunk) * cube_mesh.chunk_count); // we need enough chunks to hold all vertices, each chunk can hold 4 vertices
 
     cube_mesh.addVertex(Point3D{-1.0f, -1.0f, -1.0f});//0
     cube_mesh.addVertex(Point3D{1.0f, -1.0f, -1.0f});//1

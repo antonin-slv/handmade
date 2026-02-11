@@ -408,6 +408,120 @@ void RenderMesh3DWithFaceOrientation(HandmadeScreenBuffer *Buffer, Mesh3D &mesh,
 
 }
 
+
+void renderMesh2(HandmadeScreenBuffer *Buffer, Mesh3D2 & mesh, float *depthBuffer)
+{
+    // TODO : draw edges instead of vertices
+    Point3D screenCenter = {};
+    screenCenter.x = Buffer->Width / 2;
+    screenCenter.y = Buffer->Height / 2;
+
+    float quarter_size = (std::min)(Buffer->Width, Buffer->Height) / 4.0f;
+
+    Point3D light_direction = Point3D{1.0f, 0, 1.0f}.normalized();
+
+    Point3DCloud transformed_vertices = {};
+    transformed_vertices.vertex_count = mesh.vertex_count;
+    transformed_vertices.max_vertices = mesh.max_vertices;
+    transformed_vertices.chunk_count = mesh.chunk_count;
+    transformed_vertices.chunks = (Point3DChunk *)PushSize(&GlobalMemory.Transient, sizeof(Point3DChunk) * transformed_vertices.chunk_count);
+    // copies the points, while sending them in screenspace.
+
+    Quaternion rotation = mesh.Rotation.normalized(); // ensure the rotation is normalized
+    rotation.rotateArrayOf3DPoint(&mesh, &transformed_vertices); // rotate the vertices of the mesh and store the result in transformed_vertices
+    transformed_vertices.translate(mesh.Location); // translate the vertices of the mesh to their world position
+    transformed_vertices.BasicProjectionInPlace(); // project the vertices to screen space
+    for (int i = 0; i < transformed_vertices.chunk_count; i++)
+    {
+        //ça ça se SIMD aussi.
+        for (int lane = 0; lane < 4; lane++)
+        {
+            transformed_vertices.chunks[i].x[lane] *= quarter_size;
+            transformed_vertices.chunks[i].y[lane] *= quarter_size;
+            transformed_vertices.chunks[i].x[lane] += screenCenter.x;
+            transformed_vertices.chunks[i].y[lane] += screenCenter.y;
+        }
+    }
+
+    for (int i = 0; i < mesh.face_count; i++)
+    {
+        Face *face = &mesh.faces[i];
+
+        Point3D p1 = transformed_vertices.get(face->v[0]);//this part is very much NOT optimised
+        Point3D p2 = transformed_vertices.get(face->v[1]);
+        Point3D p3 = transformed_vertices.get(face->v[2]);
+
+        float min_x = (std::max)(0.0f, (std::min)({p1.x, p2.x, p3.x}));
+        float max_x = (std::min)((float)(Buffer->Width), (std::max)({p1.x, p2.x, p3.x}));
+        if (max_x <= min_x)
+            continue;
+        float min_y = (std::max)(0.0f, (std::min)({p1.y, p2.y, p3.y}));
+        float max_y = (std::min)((float)(Buffer->Height), (std::max)({p1.y, p2.y, p3.y}));
+        if (max_y <= min_y)
+            continue;
+
+        // calcul de l'orientation de la face
+        Point3D screen_face_normal = crossProduct(p2 - p1, p3 - p1);
+        if (screen_face_normal.z <= 0.0f) [[unlikely]]
+            continue; // backface culling
+
+        float alpha_divide = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
+        if (alpha_divide == 0.f) [[unlikely]]
+            continue;
+        else
+            alpha_divide = 1.0f / alpha_divide;
+        float beta_divide = ((p3.y - p1.y) * (p2.x - p3.x) + (p1.x - p3.x) * (p2.y - p3.y));
+        if (beta_divide == 0.f) [[unlikely]]
+            continue;
+        else
+            beta_divide = 1.0f / beta_divide;
+
+        uint32_t shaded_color = 0;
+        {
+            Point3D n_original_p1 = mesh.get(face->v[0]);//not optimized at all
+            Point3D n_original_p2 = mesh.get(face->v[1]);
+            Point3D n_original_p3 = mesh.get(face->v[2]);
+            Point3D real_normal = crossProduct(n_original_p2 - n_original_p1, n_original_p3 - n_original_p1);
+            float light_intensity = dotProduct(screen_face_normal.normalized(), light_direction);
+            if (light_intensity < 0.0f)
+                light_intensity = 0.0f;
+            else if (light_intensity > 1.0f)
+                light_intensity = 1.0f;
+
+            uint8_t face_red = (uint8_t)((face->color >> 16) & 0xFF) * light_intensity;
+            uint8_t face_green = (uint8_t)((face->color >> 8) & 0xFF) * light_intensity;
+            uint8_t face_blue = (uint8_t)(face->color & 0xFF) * light_intensity;
+
+            shaded_color = (face_red << 16) | (face_green << 8) | face_blue;
+        }
+
+        for (int y = (int)min_y; y <= (int)max_y; ++y)
+        {
+            for (int x = (int)min_x; x <= (int)max_x; ++x)
+            {
+                // barycentric coordinates
+                float alpha = ((p2.y - p3.y) * (x - p3.x) + (p3.x - p2.x) * (y - p3.y)) * alpha_divide;
+                float beta = ((p3.y - p1.y) * (x - p3.x) + (p1.x - p3.x) * (y - p3.y)) * beta_divide;
+                float gamma = 1.0f - alpha - beta;
+
+                if (alpha >= 0 && beta >= 0 && gamma >= 0)
+                {
+                    int pixelBufferIndex = y * Buffer->Width + x;
+                    // inside the triangle
+                    float sample_z = p1.z * alpha + p2.z * beta + p3.z * gamma;
+
+                    if (sample_z < depthBuffer[pixelBufferIndex] && sample_z > 0.0f)
+                    {
+                        depthBuffer[pixelBufferIndex] = sample_z;
+                        COLOR_PIXEL(Buffer, x, y, shaded_color);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 void renderSphere3D(HandmadeScreenBuffer *Buffer, Sphere sphere, float *depthBuffer)
 {
     Point3D screenCenter = {};

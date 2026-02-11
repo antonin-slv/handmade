@@ -1,6 +1,8 @@
 #ifndef OS_API_H
 #define OS_API_H
 
+
+
 /*
   Read entire file into transient memory (will be freed at the end of the frame).
   Returns true on success, false on failure
@@ -23,7 +25,8 @@ struct ScratchArena
 {
   uint8_t *base;
   size_t capacity;
-  size_t used;
+  size_t used;//si cette valeur est décrémentée, alors la mémoire est considérée comme libre.
+  //attention à ne pas libérer plus que ce qui a été utilisé, sinon on risque de corrompre la mémoire (le réalignement sur 16 bits est fait automatiquement)
 };
 
 

@@ -4,19 +4,13 @@
 #include "hand_keyboard.h"
 #include "Engine/visual_func.h"
 #include "os_api.h"
-
+#include "debug_api.h"
 
 #define KILOBYTES(Value) ((Value)*1024LL)
 #define MEGABYTES(Value) (KILOBYTES(Value)*1024LL)
 #define GIGABYTES(Value) (MEGABYTES(Value)*1024LL)
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
-
-#if HANDMADE_FAST
-#define Assert(Expression) 
-#else
-#define Assert(Expression) if(!Expression) {*(int * )0 = 0;}
-#endif
 
 struct HandmadeSoundOutput
 {

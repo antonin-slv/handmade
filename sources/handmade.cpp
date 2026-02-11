@@ -5,12 +5,16 @@
 #include "font8x8_basic.h"
 #include "Math/Shape3D.cpp"
 #include "Math/Point3D.h"
+#include "Math/Quaternions.cpp"
+
 #include <stdint.h>
 #include <string>
 
 static WireFrame3D cube_shape = {};
 static Mesh3D cube_mesh = {};
 static Mesh3D teapot_mesh = {};
+
+static Mesh3D2 cube_mesh2 = {};
 
 // audio functions  - - - - - - - - - - -
 
@@ -278,9 +282,12 @@ void HandmadeUpdateAndRender(HandmadeScreenBuffer *Buffer, HandmadeSoundOutput *
 
     // RenderMesh3DWithFaceOrientation(Buffer, teapot_mesh, depth_buffer);
     // teapot_mesh.rotate_degree(Point3D{0.0f, 1.0f, 0.0f}, 60.0f * deltaT);
-    teapot_mesh.translate(Point3D{5.0f * deltaT,0.0f, 5.0f * deltaT});
+    // teapot_mesh.translate(Point3D{5.0f * deltaT,0.0f, 5.0f * deltaT});
     teapot_mesh.rotate_degree(Point3D{0.0f, 1.0f, 0.0f}, 30.0f * deltaT);
     RenderMesh3DWithFaceOrientation(Buffer, teapot_mesh, depth_buffer);
+
+    // cube_mesh2.rotate(Point3D{1.0f, 0.5f, 0.0f}, 1.0f * deltaT); // rotate 15 degrees per second around Y axis
+    // renderMesh2(Buffer, cube_mesh2, depth_buffer);
     
 
 }
@@ -400,6 +407,7 @@ bool ParseShapeFromOBJData(const char *objData, unsigned int objFileSize, Mesh3D
 
 void HandmadeInitialize()
 {
+    //showcase of quaternions :
     // nothing for now
     test_array.Width = 2000;
     test_array.Height = 2000;
@@ -417,9 +425,9 @@ void HandmadeInitialize()
             test_array.Array[y * test_array.Width + x] = (red << 16) | (green << 8) | blue;
         }
     }
-    cube_mesh = GetCubeMesh(&GlobalMemory.Permanent);
-    cube_mesh.scale(100.0f);          // make the cube bigger
-    cube_mesh.translate({-150, 0,250}); // move away from camera
+    cube_mesh2 = GetCubeMesh(&GlobalMemory.Permanent);
+    cube_mesh2.scale(100.0f);          // make the cube bigger
+    cube_mesh2.translate({-150, 0,250}); // move away from camera
 
 
     void *obj_data = nullptr;

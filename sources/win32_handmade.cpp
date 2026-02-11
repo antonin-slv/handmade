@@ -28,18 +28,24 @@ static float zoom_level = 1.0f;
 
 void *PushSize(ScratchArena *arena, size_t size)
 {
-  // Alignement à 16 octets pour le SIMD
-  size_t aligned_size = (size + 0xF) & ~0xF;
-
-  if (arena->used + aligned_size > arena->capacity)
+  uintptr_t current_ptr = (uintptr_t)(arena->base + arena->used);
+  //this is just in case  
+  uintptr_t offset = current_ptr & 0xF;
+  if(offset > 0) {
+      offset = 16 - offset;
+  }
+  
+  if (arena->used + offset + size > arena->capacity)
   {
     //TODO : handle out of memory
     Assert(false);
     return nullptr;
   }
 
+  arena->used += offset;
   void *ptr = arena->base + arena->used;
-  arena->used += aligned_size;
+  arena->used += size;
+
   return ptr;
 }
 

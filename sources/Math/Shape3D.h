@@ -2,6 +2,8 @@
 #define SHAPE3D_H
 
 #include "Point3D.h"
+#include "Quaternions.h"
+#include "handmade.h"
 #include <tuple>
 #include <Utility>
 
@@ -86,6 +88,59 @@ struct Mesh3D : PointCloud {
     }
 };
 
+
+struct Mesh3D2 : Point3DCloud {
+    Point3D center = {0.0f, 0.0f, 0.0f}; // rotation center
+    Point3D Location = {0.0f, 0.0f, 0.0f}; // world space location
+    
+    Quaternion Rotation; // rotation in world space
+
+    Face* faces = nullptr;
+    int face_count = 0;
+    int max_faces = 0;
+
+    void addFace(uint16_t v1, uint16_t v2, uint16_t v3, uint32_t color) {
+        if (face_count < max_faces) {
+            faces[face_count++] = Face{{v1, v2, v3, 0}, color};
+        } else {
+            //TODO
+            Assert(false);
+        }
+    }
+
+    void addFace(const Face& face) {
+        if (face_count < max_faces) {
+            faces[face_count++] = face;
+        } else {
+            //TODO
+            Assert(false);
+        }
+    }
+
+    void inverseWindingAllFaces() {
+        for (int i = 0; i < face_count; i++) {
+            faces[i].inverseWinding();
+        }
+    }
+
+    void rotate(const Point3D &axis, float angleRadians) {
+        Quaternion q = Quaternion::fromAxisAngle(axis, angleRadians);
+        Rotation = q * Rotation; // apply the new rotation
+    }
+
+    void translate(const Point3D &translation) {
+        Location = Location + translation;
+    }
+
+    void scale(float scaleFactor) {
+        for (int i = 0; i < vertex_count; ++i)
+        {
+            Point3D v = get(i);
+            v = v * scaleFactor;
+            set(i, v);
+        }
+    }
+};
 /**
  * Shpère de base :
  * - centre en center
