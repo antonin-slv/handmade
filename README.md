@@ -13,5 +13,5 @@
 ### Notes : 
 - Le code est entièrement fait en C. Les seules librairie utilisées sont celles du système d'exploitation (Windows)
 - l'arrière plan est un tableau de couleurs sur lequel on peut "dessiner" en maintenant ctrl+click
-- [!WARNING] Attention au volumme sonore : le son est très désagréable.
+- Attention au volumme sonore : le son est très désagréable.
 - Ce n'est pas un projet "shippable", mais une démonstration de mon envie d'élargir mes compétences en programmation.
